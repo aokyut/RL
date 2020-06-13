@@ -3,6 +3,8 @@ import json
 from Config import Config
 from Brain import Brain
 from Agent import Agent
+import numpy as np
+from torch import tensor
 
 app = Flask(__name__)
 agents = []
@@ -10,7 +12,11 @@ brains = {}
 
 @app.route("/", methods=["GET"])
 def hello_check():
-    return "ok"
+    return_text = f"agent:{len(agents)}<br/>"
+    for key in brains.keys():
+        return_text += f"{key}\n"
+    
+    return return_text
 
 @app.route("/new", methods=["POST"])
 def new_agent():
@@ -28,10 +34,11 @@ def new_agent():
 def get_action():
     req_data = json.loads(request.data)
     agent_id = req_data["id"]
-    state = req_data["state"]
+    state = tensor(req_data["state"])
     reward = req_data["reward"]
-    res_data = {"action": agents[agent_id].step(state, reward)}
-    jsonify(res_data)
+    done = True if req_data["done"] == 1 else False
+    res_data = {"action": agents[agent_id].step(state, reward, done)}
+    return jsonify(res_data)
 
 # config通りのbrainが存在したら返す。存在しない場合は作成して返す
 def get_brain(config):

@@ -8,14 +8,15 @@ outpu_size: int
 is_continuous: bool(連続値かそうでないか)
 """
 default = {
-    "model": "PPO_discrete",
+    "model": "ppo_discrete",
     "input_size": 0,
-    "idden_size": 0,
+    "hidden_size": 0,
     "output_size": 0,
     "gamma": 0.99,
+    "lr": 0.01,
     "lambda_value": 0.5,
-    "lambda_entropy": 0.01,
-    "epsilon_clip": 0.3,
+    "lambda_entropy": 0.02,
+    "epsilon_clip": 0.2,
     "K_epoch": 5,
     "n_update": 1000,
     "is_learn": True,
@@ -25,7 +26,7 @@ class Config:
     def __init__(self):
         self.__dict__ = default
         self.hash_keys = [
-            "model"
+            "model",
             "input_size",
             "output_size",
             "hidden_size",
