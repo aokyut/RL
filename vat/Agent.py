@@ -22,19 +22,26 @@ class Agent:
         self.buffer = BufferNamespace()
         self.buffer_ = BufferNamespace()
 
+        self.local_model = self.brain.get_local_model()
+        self.pull_model()
+
         if train is True:
             self.step_f = self.train_step
         else:
             self.step_f = self.eval_step
+    
+    def pull_model(self):
+        self.local_model.sync(self.brain.model.network)
 
     def step(self, state, reward, done):
         return self.step_f(state, reward, done)
 
     def train_step(self, state, reward, done):
-        self.buffer_.state = state
+        # グローバルモデルからパラメータを取得
+
         self.buffer_.reward = reward
         
-        action = self.brain.act(state, self.buffer_)
+        action = self.local_model.act(state, self.buffer_)
 
         # final step
         if done is True:
@@ -42,6 +49,9 @@ class Agent:
             self.brain.add_memory(self.buffer)
             self.buffer_.value = 0.0
             self.brain.add_memory(self.buffer_)
+
+            # モデルの更新
+            self.pull_model()
             return action
 
         if len(self.buffer) > 0:

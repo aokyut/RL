@@ -10,21 +10,24 @@ is_continuous: bool(連続値かそうでないか)
 default = { 
     "model": "ppo_discrete",
     "input_size": 0,
-    "hidden_size": 0,
     "output_size": 0,
     "lr": 0.01,
     "is_learn": True,
     # PPO Parameters
+    "hidden_units": 64,
+    "hidden_layer": 2
     "gamma": 0.99,
-    "lambda_value": 0.5,
-    "lambda_entropy": 0.02,
-    "epsilon_clip": 0.2,
-    "K_epoch": 5,
-    "n_update": 1000,
-    "device": "cpu",
+    "c_vf": 1.00,
+    "beta": 0.001,
+    "epsilon": 0.2,
+    "lambda":0.95,
+    "time_horizon": 2048,
+    "buffer_size": 2048,
+    "batch_size": 64,
+    "num_epoch": 5,
 }
 
-class Config:
+class tfConfig:
     def __init__(self):
         self.__dict__ = default
         self.hash_keys = [

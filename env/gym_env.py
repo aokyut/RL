@@ -68,7 +68,7 @@ class Model:
         done = False
 
         while True:
-            sleep(0.1)
+            sleep(0.05)
             step += 1
             # get action
             action = self.act(state, reward, done)
@@ -76,16 +76,16 @@ class Model:
             # execute action
             state, reward, done, _ = self.env.step(action)
             
-            reward = (reward / 10) + (state[0]/10)
-            # reward = 0
+            # reward /= 100
+            reward = 0
 
-            # if done is True:
-            #     if step >= 195:
-            #         reward += 1.0
-            #     else:
-            #         reward += -1.0
-            # else:
-            #     reward += 0.005
+            if done is True:
+                if step >= 195:
+                    reward += 1.0
+                else:
+                    reward += -1.0
+            else:
+                reward += 0.005
 
 
             if self.is_render is True:
@@ -96,6 +96,7 @@ class Model:
                 break
         
         self.env.close()
+        print(step)
         
         if self.debug is True:
             self.debug_out(str(step) + "\n")
@@ -138,11 +139,11 @@ class Env:
 
 if __name__ == "__main__":
     video_root = "video"
-    gym_env = Env(env_name="MountainCar-v0", video_path="test.mp4")
+    gym_env = Env(env_name="CartPole-v0", video_path="test.mp4")
     config = {
-        "input_size": 2,
+        "input_size": 4,
         "hidden_size": 20,
-        "output_size": 3
+        "output_size": 2
     }
     model = Model(
         url = "http://localhost:8080/",
@@ -153,7 +154,7 @@ if __name__ == "__main__":
     epoch = 0
     while True:
         epoch += 1
-        print(epoch)
+        # print(epoch)
         if epoch % 100 == 0:
             gym_env.video_path = os.path.join(video_root, str(epoch))
             gym_env.video_on()

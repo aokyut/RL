@@ -56,9 +56,11 @@ default = {
               float,
               float
              ]
-    "reward": float
+    "reward": float,
+    "done": 0 or 1,
 }
-レスポンス
+
+レスポンス(連続値の場合には-1~1の実数で出力)
 default = {
     "action": [
         float,

@@ -1,6 +1,7 @@
 # ----- networks をラッピングして使いやすくする -----
 import torch
 import numpy as np
+from copy import deepcopy
 
 from networks import *
 from utils import debug_text
@@ -57,34 +58,32 @@ class PPO_discrete:
 
         # act
         if params.is_learn is True:
-            self.act_f = self.train_act
             self.network.train()
         else:
-            self.act_f = self.eval_act
             self.network.eval()
 
-    def act(self, state, buffer):
-        action = self.act_f(state, buffer)
+    # def act(self, state, buffer):
+    #     action = self.act_f(state, buffer)
         
-        return action
+    #     return action
 
-    def eval_act(self, state, buffer):
-        v, p = self.network(state)
-        dist = torch.distributions.Categorical(p)
-        action = dist.sample()
-        return action.item()
+    # def eval_act(self, state, buffer):
+    #     v, p = self.network(state)
+    #     dist = torch.distributions.Categorical(p)
+    #     action = dist.sample()
+    #     return action.item()
     
-    def train_act(self, state, buffer):
-        v, p = self.network(state)
-        dist = torch.distributions.Categorical(p)
-        action = dist.sample()
+    # def train_act(self, state, buffer):
+    #     v, p = self.network(state)
+    #     dist = torch.distributions.Categorical(p)
+    #     action = dist.sample()
 
-        buffer.state = state
-        buffer.action = action
-        buffer.action_logprob = dist.log_prob(action)
-        buffer.value = v
+    #     buffer.state = state
+    #     buffer.action = action
+    #     buffer.action_logprob = dist.log_prob(action)
+    #     buffer.value = v
 
-        return action.item()
+    #     return action.item()
     
     def update(self, memory):
         # R(t)
@@ -135,9 +134,11 @@ class PPO_discrete:
         self.memory.reward.append(buffer.reward)
         self.memory.action_logprob.append(buffer.action_logprob)
 
+
         if (len(self.memory) % self.n_update == 0) and (len(self.memory) != 0):
-            self.update(self.memory)
+            instant_memory = self.memory
             self.memory = BufferMemory()
+            self.update(instant_memory)
 
 class Local_ppo_discrete:
     def __init__(self, params):
@@ -145,9 +146,30 @@ class Local_ppo_discrete:
                                             params.hidden_size,
                                             params.output_size)
         
+        if params.is_learn is True:
+            self.act_f = self.train_act
+        else:
+            self.act_f = self.eval_act
+        
         self.network.eval()
+
+        
+    def act(self, state, buffer):
+        return self.act_f(state, buffer)
     
-    def act(self, state):
+    def train_act(self, state, buffer):
+        v, p = self.network(state)
+        dist = torch.distributions.Categorical(p)
+        action = dist.sample()
+
+        buffer.state = state
+        buffer.action = action
+        buffer.action_logprob = dist.log_prob(action)
+        buffer.value = v
+
+        return action.item()
+    
+    def eval_act(self, state, buffer):
         v, p = self.network(state)
         dist = torch.distributions.Categorical(p)
         action = dist.sample()
@@ -200,32 +222,30 @@ class PPO_continuous:
         
         # act setting
         if params.is_learn is True:
-            self.act_f = self.train_act
             self.network.train()
         else:
-            self.act_f = self.eval_act
             self.network.eval()
 
     def act(self, state, buffer):
         return self.act_f(state, buffer)
 
-    def eval_act(self, state, buffer):
-        v, mu, sig = self.network(state)
-        dist = torch.distributions.normal.Normal(mu, sig)
-        action = dist.sample()
-        return torch.clamp(action.item(), -1.0, 1.0)
+    # def eval_act(self, state, buffer):
+    #     v, mu, sig = self.network(state)
+    #     dist = torch.distributions.normal.Normal(mu, sig)
+    #     action = dist.sample()
+    #     return torch.clamp(action.item(), -1.0, 1.0)
     
-    def train_act(self, state, buffer):
-        v, mu, sig = self.network(state)
-        dist = torch.distributions.normal.Normal(mu, sig)
-        action = dist.sample()
+    # def train_act(self, state, buffer):
+    #     v, mu, sig = self.network(state)
+    #     dist = torch.distributions.normal.Normal(mu, sig)
+    #     action = dist.sample()
 
-        buffer.state = state
-        buffer.action = action
-        buffer.action_logprob = dist.log_prob(action)
-        buffer.value = v
+    #     buffer.state = state
+    #     buffer.action = action
+    #     buffer.action_logprob = dist.log_prob(action)
+    #     buffer.value = v
         
-        return torch.clamp(action.item(), -1.0, 1.0)
+    #     return torch.clamp(action.item(), -1.0, 1.0)
 
     def update(self, memory):
         # R(t)
@@ -270,9 +290,10 @@ class PPO_continuous:
         self.memory.reward.append(buffer.reward)
         self.memory.action_logprob.append(buffer.action_logprob)
 
-        if (len(self.memory) % self.n_update == 0) and (len(self.memory) != 0):
-            self.update(self.memory)
+        if (len(self.memory) >= self.n_update) and (len(self.memory) != 0):
+            instant_memory = self.memory
             self.memory = BufferMemory()
+            self.update(instant_memory)
 
 
 class Local_ppo_continuous:
@@ -282,8 +303,30 @@ class Local_ppo_continuous:
             params.hidden_size,
             params.output_size
         )
+
+        if params.is_learn is True:
+            self.act_f = self.train_act
+        else:
+            self.act_f = self.eval_act
+        
+        self.network.eval()
+
+    def act(self, state, buffer):
+        return self.act_f(state, buffer)
     
-    def act(self, state):
+    def train_act(self, state, buffer):
+        v, mu, sig = self.network(state)
+        dist = torch.distributions.normal.Normal(mu, sig)
+        action = dist.sample()
+
+        buffer.state = state
+        buffer.action = action
+        buffer.action_logprob = dist.log_prob(action)
+        buffer.value = v
+
+        return action.item()
+    
+    def eval_act(self, state):
         v, mu, sig = self.network(state)
         dist = torch.distributions.normal.Normal(mu, sig)
         action = dist.sample()

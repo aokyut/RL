@@ -4,7 +4,7 @@ network_type = {
     "ppo_discrete": {
         "global": PPO_discrete,
         "local": Local_ppo_discrete
-    }
+    },
     "ppo_continuous": {
         "global": PPO_continuous,
         "local": Local_ppo_continuous
@@ -17,7 +17,7 @@ class Brain:
         self.params = params
     
     def get_local_model(self):
-        return network_type[params.model]["local"](params)
+        return network_type[self.params.model]["local"](self.params)
     
     def act(self, state, memory):
         return self.model.act(state, memory)
