@@ -14,6 +14,7 @@ from torch.utils.tensorboard import SummaryWriter
 import multiprocessing
 import random
 from os import path, makedirs
+import argparse
 
 NUM_CPU = multiprocessing.cpu_count()
 BATCH_SIZE = config.batch_size
@@ -62,13 +63,13 @@ def selfplay(weights, num_sims, dirichlet_alpha=0.35):
         sample.reward = reward[0] if current_player == 0 else reward[1]
     return record, reward[0], i
 
-
-def main(n_parallel_selfplay=1, num_mtcs_sims=2):
+def main(args):
+    n_parallel_selfplay = args.parallel_n
     ray.init(num_cpus=NUM_CPU)
     batch_size = BATCH_SIZE
-    num_mtcs_sims = config.selfplay_sim_puct_num
+    num_mtcs_sims = args.selfplay_sim_puct_num
 
-    writer = SummaryWriter(path.join(config.log_dir, config.log_name))
+    writer = SummaryWriter(path.join(args.log_dir, args.log_name))
 
     network = AlphaZeroNetwork()
     best_model = AlphaZeroNetwork()
@@ -91,7 +92,7 @@ def main(n_parallel_selfplay=1, num_mtcs_sims=2):
         player_0_win = 0
         player_1_win = 0
         play_step = 0
-        for _ in tqdm(range(config.selfplay_num)):
+        for _ in tqdm(range(args.selfplay_num)):
             # selfplay(current_weights, num_mtcs_sims)
             finished, work_in_progress = ray.wait(work_in_progress, num_returns=1)
             
@@ -109,9 +110,9 @@ def main(n_parallel_selfplay=1, num_mtcs_sims=2):
             ])
 
             n += 1
-        writer.add_scalar("eval/player_0_win", player_0_win / config.selfplay_num, n)
-        writer.add_scalar("eval/player_1_win", player_1_win / config.selfplay_num, n)
-        writer.add_scalar("eval/play_step", play_step / config.selfplay_num, n)
+        writer.add_scalar("eval/player_0_win", player_0_win / args.selfplay_num, n)
+        writer.add_scalar("eval/player_1_win", player_1_win / args.selfplay_num, n)
+        writer.add_scalar("eval/play_step", play_step / args.selfplay_num, n)
 
         num_iters = 5 * (len(replay) // batch_size)
         network.train()
@@ -131,7 +132,7 @@ def main(n_parallel_selfplay=1, num_mtcs_sims=2):
             optimizer.zero_grad()
             loss.backward()
 
-            if learn_step % config.log_step:
+            if learn_step % args.log_step:
                 writer.add_scalar("loss/policy_loss", policy_loss.item(), learn_step)
                 writer.add_scalar("loss/value_loss", value_loss.item(), learn_step)
                 writer.add_scalar("loss/loss", loss.item(), learn_step)
@@ -140,28 +141,44 @@ def main(n_parallel_selfplay=1, num_mtcs_sims=2):
 
         #eval_step
         agent_r = RandomAgent()
-        agent_u = UCTAgent(config.eval_uct_n)
-        agent_a = AlphaZeroAgent(best_model, config.azero_puct_n)
-        agent_tar = AlphaZeroAgent(network, config.azero_puct_n)
+        agent_u = UCTAgent(args.eval_uct_n)
+        agent_a = AlphaZeroAgent(best_model, args.azero_puct_n)
+        agent_tar = AlphaZeroAgent(network, args.azero_puct_n)
 
-        r_rate = eval_play(agent_tar, agent_r, config.eval_play_n)
-        u_rate = eval_play(agent_tar, agent_u, config.eval_play_n)
-        a_rate = eval_play(agent_tar, agent_a, config.eval_play_n)
+        r_rate = eval_play(agent_tar, agent_r, args.eval_play_n)
+        u_rate = eval_play(agent_tar, agent_u, args.eval_play_n)
+        a_rate = eval_play(agent_tar, agent_a, args.eval_play_n)
 
         writer.add_scalar("eval/vs_random", r_rate[0], n)
-        writer.add_scalar(f"eval/vs_UCT{config.eval_play_n}", u_rate[0], n)
+        writer.add_scalar(f"eval/vs_UCT{args.eval_play_n}", u_rate[0], n)
         writer.add_scalar("eval/vs_best", a_rate[0], n)
 
         if a_rate[0] > 0.5 or True:
             print(f"model update {n}")
             best_model.load_state_dict(network.state_dict())
-            if not path.exists(config.save_dir):
-                makedirs(config.save_dir)
-            save_name = path.join(config.save_dir, config.log_name + str(n))
+            if not path.exists(args.save_dir):
+                makedirs(args.save_dir)
+            save_name = path.join(args.save_dir, args.log_name + str(n))
             torch.save(network.state_dict(), save_name)
 
         current_weights = ray.put(network.state_dict())
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--log_dir", default=config.log_dir)
+    parser.add_argument("--save_dir", default=config.save_dir)
+    parser.add_argument("--log_name", default=config.log_name)
+    parser.add_argument("--batch_size", default=config.batch_size, type=int)
+    parser.add_argument("--buffer_size", default=config.buffer_size, type=int)
+    parser.add_argument("--log_step", type=int, default=config.log_step)
+    parser.add_argument("--eval_play_n", type=int, default=config.eval_play_n)
+    parser.add_argument("--eval_uct_n", type=int, default=config.eval_uct_n)
+    parser.add_argument("--selfplay_num", type=int, default=config.selfplay_num)
+    parser.add_argument("--selfplay_sim_puct_num", type=int, default=config.selfplay_sim_puct_num)
+    parser.add_argument("--azero_puct_n", type=int, default=config.azero_puct_n)
+    parser.add_argument("--parallel_n", type=int, default=multiprocessing.cpu_count())
+
+    args = parser.parse_args()
+
+    main(args)

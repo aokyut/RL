@@ -1,9 +1,43 @@
-from renju import b2s, get_action_mask, get_next_state, get_valid_actions
+from renju import b2s, get_action_mask, get_next_state, get_valid_actions, BOARD_SIZE
 import numpy as np
 import math
 import random
 import renju
 from tqdm import tqdm
+
+
+class PlayerAgent:
+    name = "Player"
+
+    def action(self, state):
+        action_mask = np.sum(get_action_mask(state), axis=0)
+        valid_action = get_valid_actions(state)
+        s = ""
+        for i in range(BOARD_SIZE):
+            for j in range(BOARD_SIZE):
+                if state[0, i, j] == 1:
+                    s += "O"
+                elif state[1, i, j] == 1:
+                    s += "X"
+                elif action_mask[i, j] == 1:
+                    s += "#"
+                else:
+                    s += "-"
+            s += "\n"
+        print(s)
+        while True:
+            try:
+                i, j = tuple(map(int, input(">>").strip().split()))
+            except:
+                print(f"i j: 0~{BOARD_SIZE}")
+                continue
+            action = i * BOARD_SIZE + j + BOARD_SIZE * BOARD_SIZE * (state.sum() % 2) 
+            if action in valid_action:
+                return int(action)
+            else:
+                print()
+                print("valid_action", list(valid_action))
+
 
 
 class RandomAgent:
@@ -46,8 +80,11 @@ class UCTAgent:
             v = self.playout(next_states[action])
             N[action] += 1.0
             W[action] += v
-        p = [((W[action] / N[action]) + self.c_uct * math.sqrt(2.0 * math.log(sum_n) / N[action]), action) for action in valid_actions]
+        p = [(N[action], action) for action in valid_actions]
         _, action = max(p, key=lambda x: x[0])
+        p = sorted(p, key=lambda x: x[0])
+        for value, action in p:
+            print((action % (BOARD_SIZE * BOARD_SIZE)) // BOARD_SIZE, action % BOARD_SIZE, value)
         
         return action
 
