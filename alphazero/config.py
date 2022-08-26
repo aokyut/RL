@@ -1,0 +1,13 @@
+n_res_block = 3
+log_dir = "./tensorboard"
+log_name = "test"
+batch_size = 8
+lr = 0.0001
+buffer_size = 50
+selfplay_num = 5
+selfplay_sim_puct_num = 2
+log_step = 10
+eval_play_n = 4
+eval_uct_n = 5
+azero_puct_n = 2
+save_dir = "./checkpoints"
