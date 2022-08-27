@@ -26,18 +26,12 @@ class PlayerAgent:
             s += "\n"
         print(s)
         while True:
-            try:
-                i, j = tuple(map(int, input(">>").strip().split()))
-            except:
-                print(f"i j: 0~{BOARD_SIZE}")
-                continue
-            action = i * BOARD_SIZE + j + BOARD_SIZE * BOARD_SIZE * (state.sum() % 2) 
+            i, j = tuple(map(int, input(">>").strip().split()))
+            action = i * BOARD_SIZE + j + BOARD_SIZE * BOARD_SIZE * (state.sum() % 2)
             if action in valid_action:
                 return int(action)
             else:
-                print()
                 print("valid_action", list(valid_action))
-
 
 
 class RandomAgent:
@@ -82,10 +76,10 @@ class UCTAgent:
             W[action] += v
         p = [(N[action], action) for action in valid_actions]
         _, action = max(p, key=lambda x: x[0])
-        p = sorted(p, key=lambda x: x[0])
-        for value, action in p:
-            print((action % (BOARD_SIZE * BOARD_SIZE)) // BOARD_SIZE, action % BOARD_SIZE, value)
-        
+        # p = sorted(p, key=lambda x: x[0])
+        # for value, action in p:
+        #     print((action % (BOARD_SIZE * BOARD_SIZE)) // BOARD_SIZE, action % BOARD_SIZE, value)
+
         return action
 
     def playout(self, state):
@@ -101,6 +95,24 @@ class UCTAgent:
                     return 0.0
             coef *= -1.0
             state = next_state
+
+
+class PUCTAgent:
+    name = "PUCT"
+
+    def __init__(self, num_sims):
+        self.N = {}
+        self.W = {}
+        self.next_states = {}
+
+    def search(self, root_state):
+        pass
+
+    def eval(self, state):
+        pass
+
+    def expand(self, state):
+        pass
 
 
 class AlphaZeroAgent:

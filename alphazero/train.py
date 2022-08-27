@@ -10,11 +10,15 @@ import numpy as np
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
+from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import multiprocessing
 import random
 from os import path, makedirs
 import argparse
+import warnings
+
+warnings.filterwarnings("ignore")
 
 NUM_CPU = multiprocessing.cpu_count()
 BATCH_SIZE = config.batch_size
@@ -63,10 +67,10 @@ def selfplay(weights, num_sims, dirichlet_alpha=0.35):
         sample.reward = reward[0] if current_player == 0 else reward[1]
     return record, reward[0], i
 
+
 def main(args):
     n_parallel_selfplay = args.parallel_n
     ray.init(num_cpus=NUM_CPU)
-    batch_size = BATCH_SIZE
     num_mtcs_sims = args.selfplay_sim_puct_num
 
     writer = SummaryWriter(path.join(args.log_dir, args.log_name))
@@ -78,7 +82,6 @@ def main(args):
 
     current_weights = ray.put(network.state_dict())
     # current_weights = network.state_dict()
-    replay = ReplayBuffer(buffer_size=BUFFER_SIZE)
     optimizer = optim.SGD(network.parameters(), lr=LR)
 
     work_in_progress = [
@@ -92,17 +95,18 @@ def main(args):
         player_0_win = 0
         player_1_win = 0
         play_step = 0
-        for _ in tqdm(range(args.selfplay_num)):
+        replay = ReplayBuffer(buffer_size=args.buffer_size)
+        for _ in tqdm(range(args.selfplay_num), smoothing=0.9, desc=f"[selfplay:{n}~{args.selfplay_num + n}]"):
             # selfplay(current_weights, num_mtcs_sims)
             finished, work_in_progress = ray.wait(work_in_progress, num_returns=1)
-            
+
             record, win, step = ray.get(finished[0])
             replay.add_record(record)
             if win == 1:
                 player_0_win += 1
             elif win == -1:
                 player_1_win += 1
-            
+
             play_step += step
 
             work_in_progress.extend([
@@ -114,32 +118,37 @@ def main(args):
         writer.add_scalar("eval/player_1_win", player_1_win / args.selfplay_num, n)
         writer.add_scalar("eval/play_step", play_step / args.selfplay_num, n)
 
-        num_iters = 5 * (len(replay) // batch_size)
         network.train()
-        for i in tqdm(range(num_iters)):
-            learn_step += 1
-            states, masks, mtcs_policy, reward = replay.get_minibatch(batch_size=batch_size)
 
-            p, v = network(states, masks)
+        dataloader = DataLoader(replay,
+                                batch_size=args.batch_size,
+                                shuffle=True,
+                                num_workers=2,
+                                drop_last=True)
+        for i in tqdm(range(5), leave=False):
+            for states, masks, mtcs_policy, reward in tqdm(dataloader, desc=f"[update: data{len(replay)}]", leave=False):
+                learn_step += 1
 
-            value_loss = F.mse_loss(v, reward)
+                p, v = network(states, masks)
 
-            policy_loss = - mtcs_policy * torch.log(p + 0.0001)
-            policy_loss = torch.mean(policy_loss)
+                value_loss = F.mse_loss(v, reward)
 
-            loss = torch.mean(policy_loss + value_loss)
+                policy_loss = - mtcs_policy * torch.log(p + 0.0001)
+                policy_loss = torch.mean(policy_loss)
 
-            optimizer.zero_grad()
-            loss.backward()
+                loss = torch.mean(policy_loss + value_loss)
 
-            if learn_step % args.log_step:
-                writer.add_scalar("loss/policy_loss", policy_loss.item(), learn_step)
-                writer.add_scalar("loss/value_loss", value_loss.item(), learn_step)
-                writer.add_scalar("loss/loss", loss.item(), learn_step)
+                optimizer.zero_grad()
+                loss.backward()
+
+                if learn_step % args.log_step:
+                    writer.add_scalar("loss/policy_loss", policy_loss.item(), learn_step)
+                    writer.add_scalar("loss/value_loss", value_loss.item(), learn_step)
+                    writer.add_scalar("loss/loss", loss.item(), learn_step)
 
         network.eval()
 
-        #eval_step
+        # eval_step
         agent_r = RandomAgent()
         agent_u = UCTAgent(args.eval_uct_n)
         agent_a = AlphaZeroAgent(best_model, args.azero_puct_n)

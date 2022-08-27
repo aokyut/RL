@@ -1,6 +1,7 @@
 import random
 from dataclasses import dataclass
 import torch
+from torch.utils.data import Dataset
 
 
 @dataclass
@@ -12,7 +13,7 @@ class Sample:
     mask: list
 
 
-class ReplayBuffer:
+class ReplayBuffer(Dataset):
     def __init__(self, buffer_size):
         self.buffer_size = buffer_size
         self.records = []
@@ -32,6 +33,19 @@ class ReplayBuffer:
             self.records.extend(record)
         if len(self.records) > self.buffer_size:
             self.records = self.records[:-1]
+
+    def __len__(self):
+        return len(self.records)
+
+    def __getitem__(self, index):
+        item = self.records[index]
+
+        state = torch.from_numpy(item.state)
+        mask = torch.from_numpy(item.mask)
+        mtcs_policy = torch.Tensor(item.mtcs_policy)
+        reward = torch.Tensor([item.reward])
+
+        return state, mask, mtcs_policy, reward
 
     def get_minibatch(self, batch_size):
         """
@@ -53,6 +67,3 @@ class ReplayBuffer:
         reward = torch.cat([torch.unsqueeze(torch.Tensor([batch.reward]).clone(), 0) for batch in batchs], 0)
 
         return states, masks, mtcs_policy, reward
-
-    def __len__(self):
-        return len(self.records)
