@@ -86,6 +86,7 @@ class AlphaZeroNetwork(nn.Module):
         v = torch.flatten(v, start_dim=1)
         v = self.v_dense(v)
         v = self.value(v)
+        v = F.tanh(v)
 
         return p * mask, v
 
