@@ -187,7 +187,7 @@ if __name__ == "__main__":
     parser.add_argument("--selfplay_sim_puct_num", type=int, default=config.selfplay_sim_puct_num)
     parser.add_argument("--azero_puct_n", type=int, default=config.azero_puct_n)
     parser.add_argument("--parallel_n", type=int, default=multiprocessing.cpu_count())
-    parser.add_argument("--selfplay_total", default=config.selfplay_total)
+    parser.add_argument("--selfplay_total", type=int, default=config.selfplay_total)
 
     args = parser.parse_args()
 
