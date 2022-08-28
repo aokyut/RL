@@ -62,6 +62,7 @@ class AlphaZeroNetwork(nn.Module):
         self.v_relu = nn.LeakyReLU()
         self.v_dense = nn.Linear(renju.BOARD_SIZE ** 2, 256)
         self.value = nn.Linear(256, 1)
+        self.tanh = nn.Tanh()
 
     def forward(self, state, action_mask):
         """
@@ -86,7 +87,7 @@ class AlphaZeroNetwork(nn.Module):
         v = torch.flatten(v, start_dim=1)
         v = self.v_dense(v)
         v = self.value(v)
-        v = F.tanh(v)
+        v = self.tanh(v)
 
         return p * mask, v
 

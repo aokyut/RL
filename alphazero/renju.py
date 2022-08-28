@@ -1,8 +1,8 @@
 import numpy as np
 from tqdm import tqdm
 import tkinter as tk
-import tkinter.ttk as ttk
 from numba import jit
+import codecs
 
 BOARD_SIZE = 7
 ACTION_SPACE = BOARD_SIZE * BOARD_SIZE * 2
@@ -154,7 +154,7 @@ def get_next_state(board, action):
     return (next_board, False, False)
 
 
-@jit('void(f8[:, :, :])',nopython=True, cache=True)
+@jit('string(f8[:, :, :])', nopython=True, cache=True)
 def show_board(state):
     s = ""
     for i in range(BOARD_SIZE):
@@ -166,9 +166,10 @@ def show_board(state):
             else:
                 s += "-"
         s += "\n"
-    print(s)
+    # print(s)
+    return s
 
-# 
+
 def eval_play(agent1, agent2, num):
     """
     Parameters
@@ -186,11 +187,11 @@ def eval_play(agent1, agent2, num):
     p2_win = 0
     for i in tqdm(range(num // 2), leave=False, desc=f"[{agent1.name}] vs [{agent2.name}]"):
         p1, p2 = play(agent1, agent2)
-        p1_win = p1
-        p2_win = p2
+        p1_win += p1
+        p2_win += p2
         p2, p1 = play(agent2, agent1)
-        p1_win = p1
-        p2_win = p2
+        p1_win += p1
+        p2_win += p2
     return p1_win / num, p2_win / num
 
 
@@ -207,11 +208,15 @@ def play(agent1, agent2):
         if done:
             if iswin:
                 wins[player] = 1
+                # print(agent.name)
+                # print(show_board(next_state))
+                # print(wins)
                 return tuple(wins)
             else:
                 return tuple(wins)
         player = 1 - player
         state = next_state
+    
 
 
 class Game:

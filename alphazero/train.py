@@ -96,7 +96,7 @@ def main(args):
         player_1_win = 0
         play_step = 0
         replay = ReplayBuffer(buffer_size=args.buffer_size)
-        for _ in tqdm(range(args.selfplay_num), smoothing=0.9, desc=f"[selfplay:{n}~{args.selfplay_num + n}]"):
+        for _ in tqdm(range(args.selfplay_num), smoothing=0.1, desc=f"[selfplay:{n}~{args.selfplay_num + n}]"):
             # selfplay(current_weights, num_mtcs_sims)
             finished, work_in_progress = ray.wait(work_in_progress, num_returns=1)
 
