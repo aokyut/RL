@@ -91,7 +91,7 @@ def main(args):
 
     n = 0
     learn_step = 0
-    while n < 10000:
+    while n < args.selfplay_total:
         player_0_win = 0
         player_1_win = 0
         play_step = 0
@@ -187,6 +187,7 @@ if __name__ == "__main__":
     parser.add_argument("--selfplay_sim_puct_num", type=int, default=config.selfplay_sim_puct_num)
     parser.add_argument("--azero_puct_n", type=int, default=config.azero_puct_n)
     parser.add_argument("--parallel_n", type=int, default=multiprocessing.cpu_count())
+    parser.add_argument("--selfplay_total", default=config.selfplay_total)
 
     args = parser.parse_args()
 
