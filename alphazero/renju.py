@@ -208,9 +208,9 @@ def play(agent1, agent2):
         if done:
             if iswin:
                 wins[player] = 1
-                # print(agent.name)
-                # print(show_board(next_state))
-                # print(wins)
+                print(agent.name)
+                print(show_board(next_state))
+                print(wins)
                 return tuple(wins)
             else:
                 return tuple(wins)

@@ -1,6 +1,6 @@
 from network import AlphaZeroNetwork
-from mtcs import AlphaZeroAgent, PlayerAgent
-from renju import play, Game
+from mtcs import AlphaZeroAgent, PlayerAgent, UCTAgent
+from renju import play, Game, eval_play
 import torch
 import argparse
 import config
@@ -19,7 +19,8 @@ if __name__ == "__main__":
     network = AlphaZeroNetwork()
 
     network.load_state_dict(torch.load(path.join(args.load_dir, args.load_model)))
-
+    r = UCTAgent(300)
     a = AlphaZeroAgent(network, args.mtcn_n)
-    Game(a)
+    # Game(a)
+    result = eval_play(r, a, 20)
     # play(a, p)

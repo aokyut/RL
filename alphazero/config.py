@@ -1,4 +1,4 @@
-n_res_block = 2
+n_res_block = 1
 log_dir = "./tensorboard"
 log_name = "test"
 batch_size = 128

@@ -6,6 +6,15 @@ import renju
 from tqdm import tqdm
 
 
+def softmax_select(p, t=0.5):
+    """
+    p: np.Array(n)
+    t: float
+    """
+    u = np.sum(np.exp(p * t))
+    return np.exp(p * t) / u
+
+
 class PlayerAgent:
     name = "Player"
 
@@ -167,7 +176,7 @@ class PVmtcs:
             self.P[s][a] = (1 - self.eps) * self.P[s][a] + self.eps * noise
 
         #: MCTS simulationの実行
-        for _ in range(num_sims):
+        for _ in tqdm(range(num_sims), leave=False):
 
             U = [self.c_puct * self.P[s][a] * math.sqrt(sum(self.N[s])) / (1 + self.N[s][a])
                  for a in range(renju.ACTION_SPACE)]
@@ -179,11 +188,11 @@ class PVmtcs:
             scores = [u + q for u, q in zip(U, Q)]
             scores = np.array([score if action in valid_actions else -np.inf
                                for action, score in enumerate(scores)])
-
+            prob = softmax_select(scores)
             #: スコアのもっとも高いactionを選択
             if len(scores) == 0:
                 print(self.P[s], self.U, self.P, self.next_states[s])
-            action = random.choice(np.where(scores == scores.max())[0])
+            action = np.random.choice(list(range(renju.ACTION_SPACE)), p=prob)
             next_state = self.next_states[s][action]
 
             #: 選択した行動を評価（次は相手番なので評価値に-1をかける）
@@ -239,8 +248,7 @@ class PVmtcs:
                                for action, score in enumerate(scores)])
 
             best_action = random.choice(np.where(scores == scores.max())[0])
-            # if best_action not in self.next_states[s].keys():
-            #     print(self.next_states[s], valid_actions)
+
             next_state = self.next_states[s][best_action]
 
             v = -self.evaluate(next_state)
