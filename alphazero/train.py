@@ -162,7 +162,7 @@ def main(args):
         writer.add_scalar(f"eval/vs_UCT{args.eval_play_n}", u_rate[0], n)
         writer.add_scalar("eval/vs_best", a_rate[0], n)
 
-        if a_rate[0] > 0.5:
+        if a_rate[0] > a_rate[1]:
             print(f"model update {n}")
             best_model.load_state_dict(network.state_dict())
             if not path.exists(args.save_dir):
