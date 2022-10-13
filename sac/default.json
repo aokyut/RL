@@ -12,7 +12,7 @@
     "save_interval": 1000,
     "memory_size": 10000,
     "batch_size": 64,
-    "lr": 0.0001,
+    "lr": 0.001,
     "gamma": 0.995,
     "log_std_clamp_max": 2,
     "log_std_clamp_min": -20,

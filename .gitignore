@@ -2,3 +2,5 @@
 */checkpoints/
 *test*
 */__pycache__
+tensorboard/*
+models/*

@@ -3,7 +3,7 @@ from sac import sac
 from torch.utils.tensorboard import SummaryWriter
 from os.path import join
 import json
-from utils.memory import ReplayMemory
+from utils.memory import ReplayMemory, PrioritizedReplayMemory
 from base.trainer import gym_trainer
 import gym
 
@@ -34,15 +34,15 @@ def pull_model_and_writer(model_class, args):
         for key, val in config.items():
             print(f"{key}: {val}")
         writer = SummaryWriter(log_dir=join(config["log_dir"], config["log_name"]),
-                               purge_step=config["log_step"] // config["log_interval"])
+                               purge_step=config["log_step"])
         print(f"->resume from: {model.step}")
     else:
         for key, val in config.items():
             print(f"{key}: {val}")
         model = model_class(config)
         writer = SummaryWriter(log_dir=join(args.log_dir, args.log_name))
-    memory = ReplayMemory(config["memory_size"])
-    train_n = config["train_n"]
+    memory = PrioritizedReplayMemory(config["memory_size"])
+    train_n = config["train_n"] - config["step"]
     return model, writer, memory, train_n
     
 

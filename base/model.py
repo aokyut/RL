@@ -19,6 +19,8 @@ class BaseModel(nn.Module):
         if "load_dir" not in self.config:
             self.config["load_dir"] = save_dir
         self.step = 0
+        self.config["log_step"] = 0
+        self.config["step"] = 0
 
     def optimize(self, writer, memory, optimizer):
         raise NotImplementedError()
@@ -39,6 +41,7 @@ class BaseModel(nn.Module):
         raise NotImplementedError()
     def save(self):
         self.config["step"] = self.step
+        self.config["log_step"] = (self.step // self.config["log_interval"]) * self.config["log_interval"]
         model_path = join(self.config["save_dir"], self.config["log_name"], "model.pth")
         config_path = join(self.config["save_dir"], self.config["log_name"], "config.json")
         if not path.exists(join(self.config["save_dir"], self.config["log_name"])):
@@ -46,6 +49,7 @@ class BaseModel(nn.Module):
         torch.save(self.state_dict(), model_path)
         with open(config_path, "w") as f:
             json.dump(self.config, f, indent=4)
+
     def load(self):
         model_path = join(self.config["load_dir"], self.config["log_name"], "model.pth")
         config_path = join(self.config["load_dir"],self.config["log_name"], "config.json")
@@ -54,4 +58,4 @@ class BaseModel(nn.Module):
         self.load_state_dict(torch.load(model_path))
         with open(config_path, "r") as f:
             self.config = json.load(f)
-        self.step = config["step"]
+        self.step = self.config["step"]

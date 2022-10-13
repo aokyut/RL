@@ -129,16 +129,21 @@ class SAC(BaseModel):
         return action.detach().numpy().reshape(-1)
 
     def optimize(self, writer, memory):
+        self.step += 1
         if len(memory) < self.batch_size:
             return
-        self.step += 1
-        state_batch, action_batch, reward_batch, next_state_batch, mask_batch = memory.sample(batch_size=self.batch_size)
+        weights, state_batch, action_batch, reward_batch, next_state_batch, mask_batch = memory.sample(batch_size=self.batch_size)
 
+        weights = torch.FloatTensor(weights)
         state_batch = torch.FloatTensor(state_batch)
         next_state_batch = torch.FloatTensor(next_state_batch)
         action_batch = torch.FloatTensor(action_batch)
         reward_batch = torch.FloatTensor(reward_batch).unsqueeze(1)
         mask_batch = torch.FloatTensor(mask_batch).unsqueeze(1)
+
+        q1_values, q2_values = self.critic_net(state_batch, action_batch)
+
+
 
         with torch.no_grad():
             next_action, next_log_pi, _ = self.actor_net.sample(next_state_batch)
@@ -146,10 +151,14 @@ class SAC(BaseModel):
             next_q_values_target = torch.min(next_q1_values_target, next_q2_values_target) - self.alpha * next_log_pi
             next_q_values = reward_batch + mask_batch * self.gamma * next_q_values_target
 
-        q1_values, q2_values = self.critic_net(state_batch, action_batch)
-        critic1_loss = F.mse_loss(q1_values, next_q_values)
-        critic2_loss = F.mse_loss(q2_values, next_q_values)
-        critic_loss = critic1_loss + critic2_loss
+        # td_error = (2 * next_q_values - q1_values - q2_values).reshape(-1).detach().numpy().copy()
+        td1_error = torch.square(next_q_values - q1_values)
+        td2_error = torch.square(next_q_values - q2_values)
+        td_error = td1_error + td2_error
+
+        # critic1_loss = F.mse_loss(q1_values, next_q_values)
+        # critic2_loss = F.mse_loss(q2_values, next_q_values)
+        critic_loss = torch.mean(td_error * weights)
 
         self.critic_optim.zero_grad()
         critic_loss.backward()
@@ -173,8 +182,9 @@ class SAC(BaseModel):
         self.alpha_optim.step()
 
         self.alpha = self.log_alpha.exp()
+        self.config["alpha"] = self.alpha.item()
 
-        if self.step % self.config["log_interval"] == 0:
+        if self.step % self.config["log_interval"] == 0 and self.config["log_step"] < self.step:
             writer.add_scalar("loss/actor_loss", actor_loss.item(), self.step)
             writer.add_scalar("loss/critic_loss", critic_loss.item(), self.step)
             writer.add_scalar("loss/loss", actor_loss.item() + critic_loss.item(), self.step)
@@ -188,6 +198,8 @@ class SAC(BaseModel):
         
         if self.step % self.save_interval == 0:
             self.save()
+
+        memory.update_priority(td_error.reshape(-1).detach().numpy().copy())
 
         return critic_loss.item(), actor_loss.item()
         
