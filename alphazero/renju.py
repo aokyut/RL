@@ -192,6 +192,7 @@ def eval_play(agent1, agent2, num):
         p2, p1 = play(agent2, agent1)
         p1_win += p1
         p2_win += p2
+    print(p1_win, p2_win)
     return p1_win / num, p2_win / num
 
 
@@ -208,9 +209,9 @@ def play(agent1, agent2):
         if done:
             if iswin:
                 wins[player] = 1
-                print(agent.name)
-                print(show_board(next_state))
-                print(wins)
+                # print(agent.name)
+                # print(show_board(next_state))
+                # print(wins)
                 return tuple(wins)
             else:
                 return tuple(wins)

@@ -76,7 +76,8 @@ class UCTAgent:
             W[action] = v
             next_states[action] = next_state
 
-        for _ in tqdm(range(self.num_sims), leave=False):
+        # for _ in tqdm(range(self.num_sims), leave=False):
+        for _ in range(self.num_sims):
             sum_n = sum(N.values())
             p = [((W[action] / N[action]) + self.c_uct * math.sqrt(2.0 * math.log(sum_n) / N[action]), action) for action in valid_actions]
             _, action = max(p, key=lambda x: x[0])
@@ -176,7 +177,8 @@ class PVmtcs:
             self.P[s][a] = (1 - self.eps) * self.P[s][a] + self.eps * noise
 
         #: MCTS simulationの実行
-        for _ in tqdm(range(num_sims), leave=False):
+        # for _ in tqdm(range(num_sims), leave=False):
+        for _ in range(num_sims):
 
             U = [self.c_puct * self.P[s][a] * math.sqrt(sum(self.N[s])) / (1 + self.N[s][a])
                  for a in range(renju.ACTION_SPACE)]

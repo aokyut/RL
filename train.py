@@ -44,11 +44,17 @@ def pull_model_and_writer(model_class, args):
     memory = PrioritizedReplayMemory(config["memory_size"])
     train_n = config["train_n"] - config["step"]
     return model, writer, memory, train_n
-    
+
+
+
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+
+    parser.add_argument("--gym", action="store_true", default=False)
+    parser.add_argument("--unity", action="store_true", default=False)
+
     subparser = parser.add_subparsers()
     subparser.required = True
 
@@ -69,6 +75,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     model, writer, memory, train_n = args.func(args)
 
-
-    env = gym.make('Hopper-v3')
-    gym_trainer(model=model, env=env, writer=writer, memory=memory, learn_n=train_n)
+    if parser.gym:
+        env = gym.make('Hopper-v3')
+        gym_trainer(model=model, env=env, writer=writer, memory=memory, learn_n=train_n)
+    elif parser.unity:
+        

@@ -18,9 +18,9 @@ if __name__ == "__main__":
     p = PlayerAgent()
     network = AlphaZeroNetwork()
 
-    network.load_state_dict(torch.load(path.join(args.load_dir, args.load_model)))
+    network.load_state_dict(torch.load(path.join(args.load_dir, args.load_model)), strict=False)
     r = UCTAgent(300)
     a = AlphaZeroAgent(network, args.mtcn_n)
-    # Game(a)
+    Game(r)
     result = eval_play(r, a, 20)
     # play(a, p)
