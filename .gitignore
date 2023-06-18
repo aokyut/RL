@@ -2,5 +2,9 @@
 */checkpoints/
 *test*
 */__pycache__
+__pycache__
 tensorboard/*
 models/*
+gomoku
+main.py
+gomoku_env
