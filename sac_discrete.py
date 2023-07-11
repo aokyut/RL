@@ -27,8 +27,6 @@ SACDiscreteConfig.add_parser("tau", 0.05, float, "soft update parameter")
 SACDiscreteConfig.add_parser("tar_ent", 0.5, float)
 
 SACDiscreteConfig.add_parser("use_per", True, bool, "[prioritized experience replay]: use per memory")
-SACDiscreteConfig.add_parser("beta_per_init", 0.4, float, "[prioritized experience replay]: weight parameter")
-SACDiscreteConfig.add_parser("beta_per_end", 1.0, float, "[prioritized experience replay]: weight parameter")
 SACDiscreteConfig.add_parser("per_alpha", 0.4, float, "[prioritized experience replay]: weight parameter")
 
 
@@ -58,13 +56,9 @@ class SACDiscrete(nn.Module):
         #優先度付き経験再生
         self.use_per = config["use_per"]
         if self.use_per:
-            d_beta = (config["beta_per_end"] - config["beta_per_init"]) / config["iter_num"]
-            scheduler = lambda x: (x + d_beta)
             self.memory = PrioritizedReplayMemory(
                 config["buffer_size"],
                 config["batch_size"],
-                config["beta_per_init"],
-                scheduler,
                 config["per_alpha"])
         else:
             self.memory = ReplayMemory(config["buffer_size"], config["batch_size"])
@@ -125,17 +119,15 @@ class SACDiscrete(nn.Module):
         reward = torch.FloatTensor(batch["reward"])
         done = torch.FloatTensor(batch["done"])
         action_mask = torch.FloatTensor(batch["action_mask"])
+        next_action_mask = torch.FloatTensor(batch["next_action_mask"])
         if self.alternating:
             black = torch.FloatTensor(batch["black"])
-        if self.use_per:
-            weights = torch.FloatTensor(batch["weights"])
-
 
         # q function
 
         with torch.no_grad():
             alpha = torch.exp(self.log_alpha)
-            next_pi = self.p.prob(next_state, action_mask)
+            next_pi = self.p.prob(next_state, next_action_mask)
             next_log_pi = torch.log(next_pi + 1e-6)
             # next_Q1 = self.q1_tar(next_state)
             # next_Q2 = self.q2_tar(next_state)
@@ -153,10 +145,8 @@ class SACDiscrete(nn.Module):
 
         td_error = td1_error + td2_error
 
-        if self.use_per:
-            q_loss = torch.mean(td_error * weights)
-        else:
-            q_loss = torch.mean(td_error)
+ 
+        q_loss = torch.mean(td_error)
 
         self.optim_q1.zero_grad()
         self.optim_q2.zero_grad()
@@ -165,12 +155,13 @@ class SACDiscrete(nn.Module):
         self.optim_q2.step()
 
         # policy
-        pi = self.p.prob(state,action_mask)
+        pi = self.p.prob(state, action_mask)
         log_pi = torch.log(pi + 1e-6)
         with torch.no_grad():
             Q1 = self.q1(state)
             Q2 = self.q2(state)
             Q = torch.min(Q1, Q2)
+
         if self.alternating:
             p_loss = (pi * (alpha * log_pi - black * Q)).mean()
         else:
@@ -181,7 +172,8 @@ class SACDiscrete(nn.Module):
         self.optim_p.step()
 
         # alpha
-        alpha_loss = self.log_alpha * (torch.mean(torch.sum(-pi * log_pi, dim=-1)) - self.target_entropy).detach()
+        alpha = torch.exp(self.log_alpha)
+        alpha_loss = alpha * (torch.mean(torch.sum(-pi * log_pi, dim=-1)) - self.target_entropy).detach()
 
         self.optim_alpha.zero_grad()
         alpha_loss.backward()

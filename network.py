@@ -5,8 +5,6 @@ from utills import ConfigParser
 from base.model import Network
 from torch.distributions import Categorical
 
-# TODO: ネットワーク構造については別で実装する仕組を考える
-
 DenseConfig = ConfigParser("Dense")
 DenseConfig.add_parser("input_size", -1, int)
 DenseConfig.add_parser("output_size", -1, int)
@@ -17,6 +15,8 @@ DenseConfig.add_parser("temperture_init", 0.0, float)
 DenseConfig.add_parser("temperture_end", 3.0, float)
 DenseConfig.add_parser("temperture_th", 10000, int)
 
+
+# TODO: sacとdqnで値の扱い方が変わるのでネットワークの扱いを変える事を考える。
 
 class Dense(nn.Module, Network):
     def __init__(self, config):
@@ -55,10 +55,6 @@ class Dense(nn.Module, Network):
         # probs = (action_mask * F.softmax(self.t * x, dim=-1))
         probs = (action_mask * (F.softmax(x, dim=-1) + 1e-6))
         return probs
-    
-    def prob_alternating(self, state, action_mask, black):
-        x = self.forward(state)
-        probs = (action_mask * (F.softmax(x * black, dim=-1) + 1e-6))
 
     def get_action(self, state, action_mask, reverse=False):
         reverse = False
@@ -108,20 +104,20 @@ class Cnn(nn.Module):
 
         super().__init__()
         self.cnn_layers = nn.ModuleList([
-            nn.Conv2d(4, 6, kernel_size=5, stride=1, padding=2),
+            nn.Conv2d(2, 6, kernel_size=5, stride=1, padding=2),
             nn.MaxPool2d(kernel_size=3, stride=2, padding=1),
             nn.Conv2d(6, 20, kernel_size=3,  stride=1, padding=0),
             nn.MaxPool2d(kernel_size=3, stride=1, padding=1),
             nn.Conv2d(20, 100, kernel_size=3, stride=1,padding=0),
             nn.MaxPool2d(kernel_size=3, stride=1, padding=0),
-            nn.Conv2d(100, 226, kernel_size=2, padding=0)
+            nn.Conv2d(100, 451, kernel_size=2, padding=0)
         ])
 
     def forward(self, state):
-        x = state.reshape(-1, 15, 15, 4).transpose(-1, -3)
+        x = state.reshape(-1, 15, 15, 2).transpose(-1, -3)
         for layer in self.cnn_layers:
             x = layer(x)
-        return x.reshape(-1, 226)
+        return x.reshape(-1, 451)
     
     def get_action(self, state, action_mask, reverse=False):
         x = self.forward(state)

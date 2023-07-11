@@ -70,7 +70,7 @@ class Dqn(nn.Module):
             
             bar.set_postfix(OrderedDict(loss=loss))
             bar.update(1)
-            sleep(0.2)
+            sleep(1)
             
     
     def optimize(self):

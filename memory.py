@@ -3,7 +3,7 @@ from collections import namedtuple
 import random
 import numpy as np
 
-Transition = namedtuple("Transition", ["state", "next_state", "action", "reward", "done", "action_mask", "black"])
+Transition = namedtuple("Transition", ["state", "next_state", "action", "reward", "done", "action_mask", "next_action_mask", "black"])
 
 class ReplayMemory(memory.Memory):
     def __init__(self, buffer_size, batch_size):
@@ -23,6 +23,7 @@ class ReplayMemory(memory.Memory):
             state: np.array[n]
             action: np.array[n]
             action_mask: np.array[n]
+            next_action_mask: np.array[n]
             next_state: np.array[n]
             reward: np.array[1]
             done: np.array[1] , 0 or 1
@@ -37,6 +38,7 @@ class ReplayMemory(memory.Memory):
             state: np.array[n]
             action: np.array[n]
             action_mask: np.array[n]
+            next_action_mask: np.array[n]
             next_state: np.array[n]
             reward: np.array[1]
             done: np.array[1] , 0 or 1
@@ -48,6 +50,7 @@ class ReplayMemory(memory.Memory):
             next_state=data["next_state"], 
             action=data["action"], 
             action_mask=data["action_mask"],
+            next_action_mask=data["next_action_mask"],
             reward=data["reward"], 
             done=data["done"],
             black=data["black"])
@@ -65,8 +68,8 @@ class ReplayMemory(memory.Memory):
 
     def sample(self):
         batch = random.sample(self.buffer, self.batch_size)
-        batch = [[t.state, t.action, t.reward, t.next_state, t.done, t.action_mask, t.black] for t in batch]
-        state, action, reward, next_state, done, action_mask, black = map(np.stack, zip(*batch))
+        batch = [[t.state, t.action, t.reward, t.next_state, t.done, t.action_mask, t.next_action_mask, t.black] for t in batch]
+        state, action, reward, next_state, done, action_mask, next_action_mask, black = map(np.stack, zip(*batch))
         return {
             "state": state, 
             "action":action, 
@@ -74,6 +77,7 @@ class ReplayMemory(memory.Memory):
             "next_state":next_state, 
             "done":done,
             "action_mask": action_mask,
+            "next_action_mask": next_action_mask,
             "black": black,
         }
 
@@ -121,23 +125,18 @@ class SegmentTree:
         return idx, priority
 
 class PrioritizedReplayMemory:
-    def __init__(self, buffer_size, batch_size, beta, beta_scheduler, alpha):
+    def __init__(self, buffer_size, batch_size, alpha):
         self.buffer_size = buffer_size
         self.buffer = []
         self.priorities = SegmentTree(buffer_size)
         self.index = 0
         self.batch_size = batch_size
         self.max_priority = 1
-        self.beta_scheduler = beta_scheduler
-        self.beta = beta
         self.alpha = alpha
     
     @property
     def is_full(self):
         return len(self.buffer)  == self.buffer_size
-    
-    def preprocess(self, beta):
-        pass
 
     def postprocess(self):
         pass
@@ -148,6 +147,7 @@ class PrioritizedReplayMemory:
             state: np.array[n]
             action: np.array[n]
             action_mask: np.array[n]
+            next_action_mask: np.array[n]
             next_state: np.array[n]
             reward: np.array[1]
             done: np.array[1] , 0 or 1
@@ -162,6 +162,7 @@ class PrioritizedReplayMemory:
             state: np.array[n]
             action: np.array[n]
             action_mask: np.array[n]
+            next_action_mask: np.array[n]
             next_state: np.array[n]
             reward: np.array[1]
             done: np.array[1] , 0 or 1
@@ -174,6 +175,7 @@ class PrioritizedReplayMemory:
             next_state=data["next_state"], 
             action=data["action"], 
             action_mask=data["action_mask"],
+            next_action_mask=data["next_action_mask"],
             reward=data["reward"], 
             done=data["done"],
             black=data["black"]
@@ -190,7 +192,7 @@ class PrioritizedReplayMemory:
     def update_priority(self, td_error):
         new_priorities = (td_error + 1e-6) ** (self.alpha)
         for idx, priority in zip(self.indices, new_priorities):
-            self.priorities[idx] = priority
+            self.priorities[idx] = max(priority, 1)
     
     def sample(self):
         indices  = []
@@ -199,17 +201,12 @@ class PrioritizedReplayMemory:
             idx, priority = self.priorities.sample()
             priorities.append(priority)
             indices.append(idx)
-        self.beta = self.beta_scheduler(self.beta)
 
         priorities = np.array(priorities)
 
-        weights = (priorities * self.buffer_size) ** (-1 * self.beta)
-        weights /= weights.max()
-        weights = weights.reshape([-1, 1])
-
         batch = [self.buffer[idx] for idx in indices]
-        batch = [[t.state, t.action, t.reward, t.next_state, t.done, t.action_mask, t.black] for t in batch]
-        state, action, reward, next_state, done, action_mask, black = map(np.stack, zip(*batch))
+        batch = [[t.state, t.action, t.reward, t.next_state, t.done, t.action_mask, t.next_action_mask, t.black] for t in batch]
+        state, action, reward, next_state, done, action_mask, next_action_mask, black = map(np.stack, zip(*batch))
         self.indices = indices
         return {
             "state": state, 
@@ -218,6 +215,6 @@ class PrioritizedReplayMemory:
             "next_state":next_state, 
             "done":done,
             "action_mask": action_mask,
+            "next_action_mask": next_action_mask,
             "black": black,
-            "weights": weights
         }
