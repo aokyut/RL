@@ -78,6 +78,8 @@ class SACDiscrete(nn.Module):
         self.optim_alpha = optim.SGD([self.log_alpha], lr=config["lr_alpha"])
         self.target_entropy = config["tar_ent"]
 
+        self.target_update_n = config["tar_update_n"]
+
         self.explore_func = explore_func
         self.eval_func = eval_func
 
@@ -196,8 +198,11 @@ class SACDiscrete(nn.Module):
         if self.step % self.save_n == 0:
             save_model(self.step, self.p, self.config["log_name"])
 
-        soft_update(target=self.q1_tar, source=self.q1, tau=self.tau)
-        soft_update(target=self.q2_tar, source=self.q2, tau=self.tau)
+        if self.step % self.target_update_n == 0:
+            hard_update(target=self.q1_tar, source=self.q1)
+            hard_update(target=self.q2_tar, source=self.q2)
+        # soft_update(target=self.q1_tar, source=self.q1, tau=self.tau)
+        # soft_update(target=self.q2_tar, source=self.q2, tau=self.tau)
 
         
         if self.use_per:
