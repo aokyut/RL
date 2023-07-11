@@ -12,7 +12,7 @@ def hard_update(target, source):
     for target_param, param in zip(target.parameters(), source.parameters()):
         target_param.data.copy_(param.data)
 
-def huber_error(td_error):
+def huber_error(td_error)-> torch.Tensor:
     x = torch.abs(td_error)
     return torch.square(x) / (x + 1)
 
@@ -128,4 +128,5 @@ class ConfigParser:
     def save(self):
         self.setting_file[self.name] = self.args
         with open(self.setting_path, 'wt') as f:
-            json.dump(self.setting_file, f)
+            json.dump(self.setting_file, f, indent=2)
+        

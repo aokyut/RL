@@ -48,6 +48,7 @@ class Dqn(nn.Module):
         self.tau = config["soft_update_tau"]
         self.explore_func = explore_func
         self.eval_func = eval_func
+        self.gamma = config["gamma"]
 
     #train_loop
     def train(self):
@@ -69,7 +70,7 @@ class Dqn(nn.Module):
             
             bar.set_postfix(OrderedDict(loss=loss))
             bar.update(1)
-            sleep(1.5)
+            sleep(0.2)
             
     
     def optimize(self):
@@ -83,17 +84,41 @@ class Dqn(nn.Module):
         reward = torch.FloatTensor(batch["reward"])
         done = torch.FloatTensor(batch["done"])
         action_mask = torch.FloatTensor(batch["action_mask"])
+        if self.config["alternating"]:
+            black = torch.FloatTensor(batch["black"]) * -1
 
-        Q_sa = self.network(state).gather(-1, action.long())
-        with torch.no_grad():
-            if self.config["alternating"]:
-                Qtar = -(self.target_network(next_state) - 100 * (1 - action_mask)).max(dim=1).values
-            else:
-                Qtar = (self.target_network(next_state) - 100 * (1 - action_mask)).max(dim=1).values
+        # Q_sa = self.network(state).gather(-1, action.long())
+        # with torch.no_grad():
+        #     if self.config["alternating"]:
+        #         Qtar = -(self.target_network(next_state) - 100 * (1 - action_mask)).max(dim=1).values
+        #     else:
+        #         Qtar = (self.target_network(next_state) - 100 * (1 - action_mask)).max(dim=1).values
 
-            Qtar_sd_ad = reward + self.config["gamma"] * (1 - done) * Qtar
+        #     Qtar_sd_ad = reward + self.config["gamma"] * (1 - done) * Qtar
         
-        td_error1 = Qtar_sd_ad - Q_sa
+        # td_error1 = Qtar_sd_ad - Q_sa
+        
+        # td_error = huber_error(td_error1)
+        # loss = torch.mean(td_error)
+
+        # self.optim.zero_grad()
+        # loss.backward()
+        # self.optim.step()
+
+        Q = self.network(state).gather(-1, action)
+        # Q2 = self.target_network(state).gather(-1, action)
+
+        with torch.no_grad():
+            # next_Q1 = self.network(next_state)
+            next_Q2 = self.target_network(next_state)
+            # next_Q = torch.min(next_Q1, next_Q2)
+            if self.config["alternating"]:
+                tar_next_Q = black * torch.max(black * next_Q2 - 10000 * (1 - action_mask), dim=-1, keepdim=True).values
+            else:
+                tar_next_Q = torch.max(next_Q2, dim=-1, keepdim=True).values
+            t = reward + (1 - done) * self.gamma * tar_next_Q
+
+        td_error1 = t - Q
         
         td_error = huber_error(td_error1)
         loss = torch.mean(td_error)

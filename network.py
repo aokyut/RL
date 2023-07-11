@@ -50,24 +50,33 @@ class Dense(nn.Module, Network):
             x = F.leaky_relu(x)
         return self.output_layer(x)
     
+    def prob(self, state, action_mask):
+        x = self.forward(state)
+        # probs = (action_mask * F.softmax(self.t * x, dim=-1))
+        probs = (action_mask * (F.softmax(x, dim=-1) + 1e-6))
+        return probs
+    
+    def prob_alternating(self, state, action_mask, black):
+        x = self.forward(state)
+        probs = (action_mask * (F.softmax(x * black, dim=-1) + 1e-6))
+
     def get_action(self, state, action_mask, reverse=False):
+        reverse = False
         x = self.forward(state)
         if reverse:
-            probs = (action_mask * F.softmax(-self.t * x, dim=-1))
+            probs = (action_mask * (F.softmax(-x, dim=-1) + 1e-6))
         else:
-            probs = (action_mask * F.softmax(self.t * x, dim=-1))
+            probs = (action_mask * (F.softmax(x, dim=-1) + 1e-6))
         m = Categorical(probs)
         action = m.sample()
         return action.item()
+
     def get_action_eval(self, state, action_mask,reverse=False):
+        reverse = False
         x = self.forward(state)
         if reverse:
-            probs = (action_mask * F.softmax(-x * 10, dim=-1))
-        else:
-            probs = (action_mask * F.softmax(x * 10, dim=-1))
-        m = Categorical(probs)
-        action = m.sample()
-        return action.item()
+            return torch.max(action_mask * (F.softmax(-x, dim=-1) + 1e-6), dim=-1)[1].item()
+        return torch.max(action_mask * (F.softmax(x, dim=-1) + 1e-6), dim=-1)[1].item()
     
     def clone(self):
         return Dense(self.config)
