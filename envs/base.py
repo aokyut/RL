@@ -1,0 +1,181 @@
+import gym
+import numpy as np
+from typing import Tuple, List, Callable, Any, Dict
+from memory import Transition
+import torch
+from tqdm import tqdm
+
+# random actionやaction_maskなどを要求する環境
+# stepを行うごとにplayerが入れ替わるシステム
+class BaseBoardEnv(gym.Env):
+    def __init__(self):
+        super(BaseBoardEnv, self).__init__()
+        self.player = 0
+        self.step = self.step_dec(self.step)
+
+    def step_dec(self, f):
+        def _wrapper(*arg, **keywords):
+            result = f(*arg, **keywords)
+            self.player = 1 - self.player
+            return result
+        return _wrapper
+    
+    def render(self):
+        raise NotImplementedError()
+    
+    def reset(self) -> Tuple[np.ndarray, str, Dict[str, np.ndarray]]:
+        raise NotImplementedError()
+    
+    def step(self, action:int) -> Tuple[np.ndarray, float, bool, Dict[str, np.ndarray]]:
+        """
+        output:
+            Tuple(
+                observation: np.ndarray[observation_space]
+                reward: float
+                done: bool
+                {
+                    "action_mask": np.ndarray[action_space]
+                }
+            )
+        """
+        raise NotImplementedError()
+    
+    @property
+    def observation_space(self):
+        raise NotImplementedError()
+
+    @property
+    def action_space(self):
+        raise NotImplementedError()
+
+    def get_random_action(self) -> int:
+        raise NotImplementedError()
+
+class Agent:
+    def __init__(self):
+        pass
+
+    def get_action_eval(self, env: BaseBoardEnv, state: np.ndarray, action_mask: np.ndarray) -> int:
+        raise NotImplementedError()
+    
+    def get_action_expl(self, env: BaseBoardEnv, state: np.ndarray, action_mask: np.ndarray) -> int:
+        raise NotImplementedError()
+
+class RandomAgent(Agent):
+    def __init__(self):
+        self.name = "RandomAgent"
+        self.get_action_eval = self.get_action
+        self.get_action_expl = self.get_action
+    
+    def get_action(self, env: BaseBoardEnv, _hoge: np.ndarray, _fuga: np.ndarray) -> int:
+        return env.get_random_action()
+
+class ModelAgent(Agent):
+    def __init__(self, model):
+        self.name = "ModelAgent"
+        self.model = model
+    
+    def get_action_eval(self, env: BaseBoardEnv, state: np.ndarray, action_mask: np.ndarray) -> int:
+        state = torch.from_numpy(state).float()
+        action_mask = torch.from_numpy(action_mask).float()
+        action = self.model.get_action_eval(
+            state,
+            action_mask,
+            env.player is not 0
+        )
+        return action
+    
+    def get_action_expl(self, env: BaseBoardEnv, state: np.ndarray, action_mask: np.ndarray) -> int:
+        state = torch.from_numpy(state).float()
+        action_mask = torch.from_numpy(action_mask).float()
+        action = self.model.get_action_expl(
+            state,
+            action_mask,
+            env.player is not 0
+        )
+        return action
+
+
+def play(env:BaseBoardEnv , agent1: Agent, agent2: Agent, is_eval: bool) -> Tuple[bool, bool]:
+    obs, info = self.reset()
+    action_mask = info["action_mask"]
+    if is_eval:
+        agent1_action = agent1.get_action_eval
+        agent2_action = agent2.get_action_eval
+    else:
+        agent1_action = agent1.get_action_expl
+        agent2_action = agent2.get_action_expl
+    
+    while True:
+        if self.player == 0:
+            action = agent1_action(self, obs, action_mask)
+        else:
+            action = agent2_action(self, obs, action_mask)
+        obs, reward, done, info = self.step(action)
+        action_mask = info["action_mask"]
+        if done:
+            if reward == 1:
+                return (True, False)
+            elif reward == -1:
+                return (False, True)
+            else:
+                return (False, False)
+
+def get_explore_func(env:BaseBoardEnv) -> Callable[[Any], List[Transition]]:
+
+    def explore_func(model) -> List[Transition]:
+        agent = ModelAgent(model)
+        obs, info = env.reset()
+        action_mask = info["action_mask"]
+        data = []
+        while True:
+            action = agent.get_action_expl(env, obs, action_mask)
+            black = 1 if env.player == 0 else -1
+            next_obs, reward, done, info = env.step(action)
+            next_action_mask = info["action_mask"]
+            transition = Transition(
+                state=obs,
+                next_state=next_obs,
+                action=action,
+                reward=reward,
+                done=done,
+                action_mask=action_mask,
+                next_action_mask=next_action_mask,
+                black=black
+            )
+            obs = next_obs
+            action_mask = next_action_mask
+            data.append(transition)
+            if done:
+                break
+        return data
+    return explore_func
+
+
+def get_eval_func(env:BaseBoardEnv, agents: List[Agent], eval_n: int) -> Callable[[Any], List[Transition]]:
+    def explore_func(model) -> Dict[str, float]:
+        model_agent = ModelAgent(model)
+        score = {}
+        for agent in tqdm(agents, leave=False):
+            win_black = 0
+            win_white = 0
+            draw_black = 0
+            draw_white = 0
+            for i in range(eval_n // 2):
+                result = play(env, model_agent, agent)
+                if result[0]:
+                    win_black += 1
+                elif not result[1]:
+                    draw_black += 1
+            for i in range(eval_n // 2):
+                result = play(env, agent, model_agent)
+                if result[1]:
+                    win_white += 1
+                elif not result[0]:
+                    draw_white += 1
+            score[f"eval/{agent.name}/win-black"] = win_black / (eval // 2)
+            score[f"eval/{agent.name}/win-white"] = win_white / (eval // 2)
+            score[f"eval/{agent.name}/draw-black"] = draw_black / (eval // 2)
+            score[f"eval/{agent.name}/draw-white"] = draw_white / (eval // 2)
+        return score
+    return explore_func
