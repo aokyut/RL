@@ -22,9 +22,9 @@ class AlphaZeroConfig:
     eval_n: int = 1000
     save_n: int = 20000
     sim_n: int = 40
-    prob_action_th: int = 2 #この手数に達するまでは探索回数に比例する確立で行動する
+    prob_action_th: int = 3 #この手数に達するまでは探索回数に比例する確立で行動する
     dirichlet_alpha: float = 0.35
-    epoch: int = 100
+    episode: int = 100
     selfplay_n: int = 300
 
 class PVMCTS:
@@ -63,11 +63,39 @@ class PVMCTS:
             )
     
     def get_action_eval(self, state, action_mask, reverse):
-        state = state.detach().numpy()
+        state = state.detach().numpy().astype(np.uint8)
         player = self.env.current_player(state)
         policy = self.search(state, player, self.num_sims)
         action = random.choice(np.where(np.array(policy) == max(policy))[0])
         return action
+    
+    def analyze_and_action(self, state, action_mask, reverse):
+        action = self.get_action_eval(torch.tensor(state), action_mask, reverse)
+        player = self.env.current_player(state)
+        valid_actions = self.env.get_valid_action(state, player)
+        analysys = []
+        s = self.state_to_str(state, player)
+        for valid_action in valid_actions:
+            next_state, _ = self.env.next(state, valid_action, player)
+            n = self.N[s][valid_action]
+            q = self.W[s][valid_action]
+            p = self.P[s][valid_action]
+            analysys.append({"action":valid_action, "N":n, "P":p, "Q":q})
+        
+        analysys = sorted(analysys, key=lambda x: -x["N"])
+        n_sum = sum([que["N"] for que in analysys])
+        for que in analysys:
+            act = que["action"]
+            n = que["N"]
+            p = que["P"]
+            q = que["Q"]
+            print("{:5d}: {:7.1f}% ({:5d})(N), ".format(act, 100 * n/n_sum, n), end="")
+            if q < 0:
+                print('\033[31m' + "{:7.4f}".format(q) + '\033[0m' + "(Q), ", end="")
+            else:
+                print('\033[32m' + "{:7.4f}".format(q) + '\033[0m' + "(Q), ", end="")
+            print("{:7.4f}(P_net)".format(p))
+
 
     def search(self, root_state, current_player, num_simulations):
         
@@ -246,32 +274,42 @@ class AlphaZero:
         self.env = env
         self.alpha = config.dirichlet_alpha
         self.prob_act_th = config.prob_action_th
-        self.epoch = config.epoch
+        self.episode = config.episode
         self.save_n = config.save_n
         self.eval_n = config.eval_n
+        self.selfplay_n = config.selfplay_n
 
         self.eval_func = eval_func
 
     def train(self):
         self.step = 0
-        train_loop_n = self.epoch // 5
+        train_loop_n = self.episode
         for i in tqdm(range(train_loop_n), desc="[train loop]"):
-            self.memory = ReplayMemory(self.buffer_size, self.batch_size)
+            result = self.eval_func(
+               PVMCTS(self.pv, alpha=0.35, env=self.env, epsilon=0, num_sims=self.num_sims)
+            )
+            for key, val in result.items():
+                self.writer.add_scalar(key, val, i * self.selfplay_n)
+
+            # self.memory = ReplayMemory(self.buffer_size, self.batch_size)
             mcts = PVMCTS(self.pv, self.alpha, self.env, num_sims=self.num_sims)
             i = 0
-            bar = tqdm(total=self.buffer_size, desc="[selfplay]", leave=False)
-            while not self.memory.is_full:
+            bar = tqdm(total=self.selfplay_n, desc="[selfplay]", leave=False)
+            while i < self.selfplay_n:
                 i += 1
                 data = selfplay(mcts, self.num_sims, self.env, self.alpha, self.prob_act_th)
                 self.memory.push_sequence(data)
                 bar.set_postfix(step=i)
-                bar.update(len(data))
+                bar.update(1)
+            bar.close()
             
-            iter_n = 5 * self.buffer_size // self.batch_size
+
+            iter_n = 5 * len(self.memory.buffer) // self.batch_size
             bar = tqdm(range(iter_n), desc="[update]", smoothing=0.99, leave=False)
             for i in bar:
                 result = self.optimize()
-                bar.set_postfix(result)        
+                bar.set_postfix(result)
+
 
 
     def optimize(self):
@@ -279,7 +317,7 @@ class AlphaZero:
         batch = self.memory.sample()
         state = torch.FloatTensor(batch["state"])
         mcts_policy = torch.FloatTensor(batch["policy"])
-        reward = torch.FloatTensor(batch["reward"])
+        reward = torch.FloatTensor(batch["reward"]).reshape(-1, 1)
 
         net_policy, net_value = self.pv(state)
 
@@ -300,13 +338,6 @@ class AlphaZero:
             self.writer.add_scalar("loss/value_loss", torch.sum(value_loss).item(), self.step)
             self.writer.add_scalar("loss/policy_loss", torch.sum(policy_loss).item(), self.step)
             self.writer.add_scalar("loss/sum_loss", loss.item(), self.step)
-        
-        if self.step % self.eval_n == 0:
-            result = self.eval_func(
-                PVMCTS(self.pv, alpha=0.35, env=self.env, epsilon=0, num_sims=self.num_sims)
-            )
-            for key, val in result.items():
-                self.writer.add_scalar(key, val, self.step)
 
         if self.step % self.save_n == 0:
             save_model(self.step, self.pv, self.log_name)
