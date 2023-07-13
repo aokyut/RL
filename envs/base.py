@@ -97,7 +97,7 @@ class ModelAgent(Agent):
 
 
 def play(env:BaseBoardEnv , agent1: Agent, agent2: Agent, is_eval: bool) -> Tuple[bool, bool]:
-    obs, info = self.reset()
+    obs, info = env.reset()
     action_mask = info["action_mask"]
     if is_eval:
         agent1_action = agent1.get_action_eval
@@ -107,11 +107,11 @@ def play(env:BaseBoardEnv , agent1: Agent, agent2: Agent, is_eval: bool) -> Tupl
         agent2_action = agent2.get_action_expl
     
     while True:
-        if self.player == 0:
-            action = agent1_action(self, obs, action_mask)
+        if env.player == 0:
+            action = agent1_action(env, obs, action_mask)
         else:
-            action = agent2_action(self, obs, action_mask)
-        obs, reward, done, info = self.step(action)
+            action = agent2_action(env, obs, action_mask)
+        obs, reward, done, info = env.step(action)
         action_mask = info["action_mask"]
         if done:
             if reward == 1:
@@ -153,7 +153,7 @@ def get_explore_func(env:BaseBoardEnv) -> Callable[[Any], List[Transition]]:
 
 
 def get_eval_func(env:BaseBoardEnv, agents: List[Agent], eval_n: int) -> Callable[[Any], List[Transition]]:
-    def explore_func(model) -> Dict[str, float]:
+    def eval_func(model) -> Dict[str, float]:
         model_agent = ModelAgent(model)
         score = {}
         for agent in tqdm(agents, leave=False):
@@ -161,21 +161,21 @@ def get_eval_func(env:BaseBoardEnv, agents: List[Agent], eval_n: int) -> Callabl
             win_white = 0
             draw_black = 0
             draw_white = 0
-            for i in range(eval_n // 2):
-                result = play(env, model_agent, agent)
+            for i in tqdm(range(eval_n // 2), leave=False):
+                result = play(env, model_agent, agent, True)
                 if result[0]:
                     win_black += 1
                 elif not result[1]:
                     draw_black += 1
-            for i in range(eval_n // 2):
-                result = play(env, agent, model_agent)
+            for i in tqdm(range(eval_n // 2), leave=False):
+                result = play(env, agent, model_agent, True)
                 if result[1]:
                     win_white += 1
                 elif not result[0]:
                     draw_white += 1
-            score[f"eval/{agent.name}/win-black"] = win_black / (eval // 2)
-            score[f"eval/{agent.name}/win-white"] = win_white / (eval // 2)
-            score[f"eval/{agent.name}/draw-black"] = draw_black / (eval // 2)
-            score[f"eval/{agent.name}/draw-white"] = draw_white / (eval // 2)
+            score[f"eval/{agent.name}/win-black"] = win_black / (eval_n // 2)
+            score[f"eval/{agent.name}/win-white"] = win_white / (eval_n // 2)
+            score[f"eval/{agent.name}/draw-black"] = draw_black / (eval_n // 2)
+            score[f"eval/{agent.name}/draw-white"] = draw_white / (eval_n // 2)
         return score
-    return explore_func
+    return eval_func

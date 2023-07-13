@@ -4,6 +4,22 @@ import torch.nn.functional as F
 from utills import ConfigParser
 from base.model import Network
 from torch.distributions import Categorical
+from typing import List
+
+
+class Block:
+    pass
+
+class Policy:
+    pass
+
+class Value:
+    pass
+
+class Q:
+    pass
+
+
 
 DenseConfig = ConfigParser("Dense")
 DenseConfig.add_parser("input_size", -1, int)
@@ -131,3 +147,95 @@ class Cnn(nn.Module):
     
     def clone(self):
         return Cnn()
+
+# BottleNeck
+class BottleNeckBlock(nn.Module, Block):
+    def __init__(self, channel:int):
+        assert channel % 4 == 0
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Conv2d(channel, channel // 4, kernel_size=1),
+            nn.ReLU(),
+            nn.Conv2d(channel // 4, channel // 4, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(channel // 4, channel, kernel_size=1)
+        )
+    
+    def forward(self, x):
+        x = x + self.layers(x)
+        return F.relu(x)
+
+
+class ResNet(nn.Module):
+    def __init__(self, in_ch: int, out_ch: int, hidden_ch: int, block_n: int, block_type: type):
+        assert issubclass(block_type, Block) and block_type != Block
+        super().__init__()
+        self.resblocks = nn.Sequential()
+        self.resblocks.add_module(
+            "conv2d-input", nn.Conv2d(in_ch, hidden_ch, kernel_size=1)
+        )
+        self.resblocks.add_module(
+            "relu-input", nn.ReLU()
+        )
+        for i in range(1, 1 + block_n):
+            self.resblocks.add_module(
+                f"resblock-{i}", block_type(hidden_ch)
+            )
+        self.resblocks.add_module(
+            "conv2d-output", nn.Conv2d(hidden_ch, out_ch, kernel_size=1)
+        )
+        self.resblocks.add_module(
+            "relu-output", nn.ReLU()
+        )
+
+    def forward(self, x):
+        return self.resblocks(x)
+
+
+class PVNet(nn.Module):
+    def __init__(self, 
+        input_layer: nn.Module,
+        policy_layer: nn.Module,
+        value_layer: nn.Module, 
+        in_shape: List[int]):
+        assert issubclass(type(policy_layer), Policy) and type(policy_layer) != Policy
+        assert issubclass(type(value_layer), Value) and type(value_layer) != Value
+        super().__init__()
+        self.input_layer = input_layer
+        self.policy = policy_layer
+        self.value = value_layer
+        self.in_shape = in_shape
+
+    def forward(self, state):
+        state = state.reshape(self.in_shape)
+        x = self.input_layer(state)
+        prob = self.policy(x)
+        value = self.value(x)
+        return prob, value
+
+
+class Policy2d(nn.Module, Policy):
+    def __init__(self, in_ch, out_ch, in_fc, out_fc):
+        super().__init__()
+        self.in_fc = in_fc
+        self.conv1 = nn.Conv2d(in_ch, out_ch, kernel_size=1)
+        self.fc1 = nn.Linear(in_fc, out_fc)
+
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = x.reshape(-1, self.in_fc)
+        x = self.fc1(x)
+        return F.softmax(x, dim=-1)
+
+class Value2d(nn.Module, Value):
+    def __init__(self, in_ch, out_ch, in_fc):
+        super().__init__()
+        self.in_fc = in_fc
+        self.conv1 = nn.Conv2d(in_ch, out_ch, kernel_size=1)
+        self.fc1 = nn.Linear(in_fc, 1)
+    
+    def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = x.reshape(-1, self.in_fc)
+        x = self.fc1(x)
+        return x

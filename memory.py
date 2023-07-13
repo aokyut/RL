@@ -11,7 +11,7 @@ class ReplayMemory(memory.Memory):
         self.buffer = []
         self.index = 0
         self.batch_size = batch_size
-        pass
+        self.flag = False
 
     @property
     def is_full(self):
@@ -46,19 +46,14 @@ class ReplayMemory(memory.Memory):
         """
         if "black" not in data:
             data["black"] = np.array([1])
-        transition = Transition(state=data["state"], 
-            next_state=data["next_state"], 
-            action=data["action"], 
-            action_mask=data["action_mask"],
-            next_action_mask=data["next_action_mask"],
-            reward=data["reward"], 
-            done=data["done"],
-            black=data["black"])
         if len(self.buffer) < self.buffer_size:
-            self.buffer.append(transition)
+            self.buffer.append(data)
         else:
-            self.buffer[self.index] = transition
-            self.index = (self.index + 1) % self.buffer_size
+            self.buffer[self.index] = data
+            self.index += 1
+            if self.index >= self.buffer_size:
+                self.flag = True
+                self.index = 0
     
     def preprocess(self):
         pass
@@ -67,19 +62,18 @@ class ReplayMemory(memory.Memory):
         pass
 
     def sample(self):
-        batch = random.sample(self.buffer, self.batch_size)
-        batch = [[t.state, t.action, t.reward, t.next_state, t.done, t.action_mask, t.next_action_mask, t.black] for t in batch]
-        state, action, reward, next_state, done, action_mask, next_action_mask, black = map(np.stack, zip(*batch))
-        return {
-            "state": state, 
-            "action":action, 
-            "reward":reward, 
-            "next_state":next_state, 
-            "done":done,
-            "action_mask": action_mask,
-            "next_action_mask": next_action_mask,
-            "black": black,
-        }
+        data_sequence = random.sample(self.buffer, self.batch_size)
+
+        keys = data_sequence[0].keys()
+
+        batch_dict = {}
+        for key in keys:
+            batch = []
+            for data in data_sequence:
+                batch.append(data[key])
+            batch_dict[key] = np.stack(batch)
+
+        return batch_dict
 
 
 class SegmentTree:
