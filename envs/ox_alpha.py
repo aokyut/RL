@@ -2,6 +2,7 @@ import gym
 import numpy as np
 from .base import BaseBoardEnv
 from typing import Tuple, Dict, List
+import random
 
 HUSH_ARRAY = np.array([
     1,2,4,
@@ -9,7 +10,7 @@ HUSH_ARRAY = np.array([
     64,128,0
 ])
 
-def check(board: np.ndarray) -> bool:
+def check(b: np.ndarray) -> bool:
     return (
         b[0] != 0 and (b[0] == b[1] and b[1] == b[2] or
         b[0] == b[3] and b[3] == b[6] or
@@ -21,7 +22,7 @@ def check(board: np.ndarray) -> bool:
         b[6] != 0 and b[6] == b[7] and b[7] == b[8]
     )
 
-class OXEnv(gym.Env):
+class OXEnv(BaseBoardEnv):
     action_num = 9
     def __init__(self):
         super(OXEnv, self).__init__()
@@ -77,16 +78,19 @@ class OXEnv(gym.Env):
         stone = self.black_board + self.white_board
         done = done or np.sum(stone) == 9
 
-        action_mask = 1 - self.stone_board
+        action_mask = 1 - stone
         return np.stack([self.black_board, self.white_board]).reshape(-1), reward, done, {"action_mask": action_mask}
 
     def init(self) :
         return np.zeros(18, dtype=np.uint8)
     
     def hash(self, state):
-        compressed = state * HUSH_ARRAY
+        compressed_a = state[0:9] * HUSH_ARRAY
+        compressed_b = state[9:18] * HUSH_ARRAY
+
         s = ""
-        s += chr(np.sum(compressed[:-1])) + str(state[-1])
+        s += chr(np.sum(compressed_a[:-1])) + str(state[8])
+        s += chr(np.sum(compressed_b[:-1])) + str(state[17])
         return s
     
     def next(self, state, action, current_player) -> Tuple[np.ndarray, bool]:
@@ -97,6 +101,9 @@ class OXEnv(gym.Env):
             next_state[action + 9] = 1
         return next_state, self.isdone(next_state, 1 - current_player)
     
+    def isdone(self, state, current_player) -> bool:
+        return np.sum(state) == 9 or check(state[0:9]) or check(state[9:18])
+
     def result(self, state) -> Tuple[int, int]:
         if check(state[0: 9]):
             return 1, -1

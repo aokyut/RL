@@ -136,12 +136,12 @@ class Qubic(BaseBoardEnv):
             action += 64
         new_state = state.copy()
         new_state[action] = 1
-        return new_state, self.isdone(state, current_player)
+        return new_state, self.isdone(new_state, 1 - current_player)
 
     def isdone(self, state, current_player) -> bool:
         return np.sum(state) ==  64 or check(state[0:64]) or check(state[64:128])
 
-    def result(self, state) -> Tuple[bool, bool]:
+    def result(self, state) -> Tuple[int, int]:
         if check(state[0:64]):
             return 1, -1
         if check(state[64:128]):
