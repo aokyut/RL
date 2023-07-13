@@ -156,18 +156,18 @@ def get_eval_func(env:BaseBoardEnv, agents: List[Agent], eval_n: int) -> Callabl
     def eval_func(model) -> Dict[str, float]:
         model_agent = ModelAgent(model)
         score = {}
-        for agent in tqdm(agents, leave=False):
+        for agent in agents:
             win_black = 0
             win_white = 0
             draw_black = 0
             draw_white = 0
-            for i in tqdm(range(eval_n // 2), leave=False):
+            for i in tqdm(range(eval_n // 2), leave=False, desc=f"[eval black: vs{agent.name}]"):
                 result = play(env, model_agent, agent, True)
                 if result[0]:
                     win_black += 1
                 elif not result[1]:
                     draw_black += 1
-            for i in tqdm(range(eval_n // 2), leave=False):
+            for i in tqdm(range(eval_n // 2), leave=False, desc=f"[eval white: vs{agent.name}]"):
                 result = play(env, agent, model_agent, True)
                 if result[1]:
                     win_white += 1
@@ -177,5 +177,6 @@ def get_eval_func(env:BaseBoardEnv, agents: List[Agent], eval_n: int) -> Callabl
             score[f"eval/{agent.name}/win-white"] = win_white / (eval_n // 2)
             score[f"eval/{agent.name}/draw-black"] = draw_black / (eval_n // 2)
             score[f"eval/{agent.name}/draw-white"] = draw_white / (eval_n // 2)
+            score[f"eval/{agent.name}/score"] = (win_black + win_white + draw_black / 2 + drwa_white / 2) / eval_n
         return score
     return eval_func
