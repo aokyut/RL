@@ -155,8 +155,10 @@ class BottleNeckBlock(nn.Module, Block):
         super().__init__()
         self.layers = nn.Sequential(
             nn.Conv2d(channel, channel // 4, kernel_size=1),
+            # nn.BatchNorm2d(channel // 4),
             nn.ReLU(),
             nn.Conv2d(channel // 4, channel // 4, kernel_size=3, padding=1),
+            # nn.BatchNorm2d(channel // 4),
             nn.ReLU(),
             nn.Conv2d(channel // 4, channel, kernel_size=1)
         )
@@ -238,4 +240,4 @@ class Value2d(nn.Module, Value):
         x = F.relu(self.conv1(x))
         x = x.reshape(-1, self.in_fc)
         x = self.fc1(x)
-        return x
+        return torch.tanh(x)

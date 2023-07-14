@@ -1,32 +1,54 @@
-from gomoku_env.test_env import OXEnv, eval_func
-from network import Dense, DenseConfig
+from envs.ox_alpha import OXEnv
+from envs.base import get_eval_func, RandomAgent
+from network import PVNet, ResNet, BottleNeckBlock, Policy2d, Value2d
+from alphazero import PVMCTS
 import torch
 
-net_config = DenseConfig.parse()
-network = Dense(net_config)
 
-network.load_state_dict(torch.load("checkpoint/ox_test/10000.pth"))
+input_net = ResNet(
+    in_ch=2, out_ch=4, 
+    hidden_ch=12, block_n=1, block_type=BottleNeckBlock,
+)
+
+policy_net = Policy2d(
+    in_ch=4,
+    out_ch=2,
+    in_fc=18,
+    out_fc=9
+)
+
+value_net = Value2d(
+    in_ch=4,
+    out_ch=2,
+    in_fc=18
+)
+
+pv = PVNet(
+    input_layer=input_net,
+    policy_layer=policy_net,
+    value_layer=value_net,
+    in_shape=[-1, 2, 3, 3])
+
+pv.load_state_dict(torch.load("checkpoint/alphazero_ox_test2/40000.pth"))
 
 env = OXEnv()
 
-state = env.reset()
+state, info = env.reset()
+action_mask = info["action_mask"]
 
-score = eval_func(network)
-print(score)
+network = PVMCTS(pv, 0.35, epsilon=0, num_sims=100, env=env)
+
+# score = eval_func(NewAgent(pv, env))
+# print(score)
+# exit(0)
 
 while True:
-    action_mask = env.action_mask()
     print(env.render())
-    action = network.get_action_eval(torch.from_numpy(state).float(), torch.from_numpy(action_mask).float(), not env.player == 1)
-    action_val = {}
-    vals = network(torch.from_numpy(state).float()).detach().numpy()
-    for i in range(9):
-        if action_mask[i] == 0:
-            continue
-        action_val[i] = vals[i]
+    _ = network.analyze_and_action(state, action_mask, False)
+    action = int(input())
 
-    print(action_val)
     next_state, reward, done, _ = env.step(action)
+    state = next_state
     
     if done:
         print(env.render())

@@ -1,8 +1,13 @@
+import torch
+
+import sys
+import os
+
+sys.path.append(os.path.abspath(".."))
 from envs.ox_alpha import OXEnv
 from envs.base import get_eval_func, RandomAgent
 from network import PVNet, ResNet, BottleNeckBlock, Policy2d, Value2d
 from alphazero import PVMCTS
-import torch
 
 
 input_net = ResNet(
@@ -48,9 +53,9 @@ class NewAgent:
 
 eval_func = get_eval_func(env, agents=[RandomAgent()], eval_n=20)
 
-score = eval_func(NewAgent(pv, env))
-print(score)
-exit(0)
+# score = eval_func(NewAgent(pv, env))
+# print(score)
+# exit(0)
 
 while True:
     print(env.render())

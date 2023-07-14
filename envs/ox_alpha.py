@@ -1,6 +1,6 @@
 import gym
 import numpy as np
-from .base import BaseBoardEnv
+from .base import BaseBoardEnv, MCTSAbleEnv
 from typing import Tuple, Dict, List
 import random
 
@@ -22,7 +22,7 @@ def check(b: np.ndarray) -> bool:
         b[6] != 0 and b[6] == b[7] and b[7] == b[8]
     )
 
-class OXEnv(BaseBoardEnv):
+class OXEnv(BaseBoardEnv, MCTSAbleEnv):
     action_num = 9
     def __init__(self):
         super(OXEnv, self).__init__()

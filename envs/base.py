@@ -1,13 +1,53 @@
 import gym
 import numpy as np
 from typing import Tuple, List, Callable, Any, Dict
-from memory import Transition
+from collections import namedtuple
 import torch
 from tqdm import tqdm
+import abc
+
+Transition = namedtuple(
+    "Transition",
+    ["state", "next_state", "action", "reward", "done", "action_mask", "next_action_mask", "black"]
+)
+
+class MCTSAbleEnv(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def init(self) -> np.ndarray:
+        raise NotImplementedError()
+    
+    @abc.abstractmethod
+    def hash(self) -> str:
+        raise NotImplementedError()
+    
+    @abc.abstractmethod
+    def next(self, state:np.ndarray, action:int, current_player:int) -> Tuple[np.ndarray, bool]:
+        raise NotImplementedError()
+    
+    @abc.abstractmethod
+    def isdone(self, state:np.ndarray, current_player:int) -> bool:
+        raise NotImplementedError()
+        
+    @abc.abstractmethod
+    def result(self, state:np.ndarray) -> Tuple[int, int]:
+        raise NotImplementedError()
+    
+    @abc.abstractmethod
+    def get_valid_action(self, state:np.ndarray, currnet_player:int) -> List[int]:
+        raise NotImplementedError()
+    
+    @abc.abstractmethod
+    def current_player(self, state:np.ndarray) -> int:
+        raise NotImplementedError()
+    
+    @abc.abstractmethod
+    def get_random_action(self):
+        raise NotImplementedError()
+
 
 # random actionやaction_maskなどを要求する環境
 # stepを行うごとにplayerが入れ替わるシステム
-class BaseBoardEnv(gym.Env):
+class BaseBoardEnv(gym.Env, metaclass=abc.ABCMeta):
     def __init__(self):
         super(BaseBoardEnv, self).__init__()
         self.player = 0
@@ -20,12 +60,15 @@ class BaseBoardEnv(gym.Env):
             return result
         return _wrapper
     
-    def render(self):
+    @abc.abstractmethod
+    def render(self) -> None:
         raise NotImplementedError()
     
+    @abc.abstractmethod
     def reset(self) -> Tuple[np.ndarray, str, Dict[str, np.ndarray]]:
         raise NotImplementedError()
     
+    @abc.abstractmethod
     def step(self, action:int) -> Tuple[np.ndarray, float, bool, Dict[str, np.ndarray]]:
         """
         output:
@@ -41,13 +84,16 @@ class BaseBoardEnv(gym.Env):
         raise NotImplementedError()
     
     @property
+    @abc.abstractmethod
     def observation_space(self):
         raise NotImplementedError()
 
     @property
+    @abc.abstractmethod
     def action_space(self):
         raise NotImplementedError()
 
+    @abc.abstractmethod
     def get_random_action(self) -> int:
         raise NotImplementedError()
 
@@ -177,6 +223,6 @@ def get_eval_func(env:BaseBoardEnv, agents: List[Agent], eval_n: int) -> Callabl
             score[f"eval/{agent.name}/win-white"] = win_white / (eval_n // 2)
             score[f"eval/{agent.name}/draw-black"] = draw_black / (eval_n // 2)
             score[f"eval/{agent.name}/draw-white"] = draw_white / (eval_n // 2)
-            score[f"eval/{agent.name}/score"] = (win_black + win_white + draw_black / 2 + drwa_white / 2) / eval_n
+            score[f"eval/{agent.name}/score"] = (win_black + win_white + draw_black / 2 + draw_white / 2) / eval_n
         return score
     return eval_func

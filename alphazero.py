@@ -12,6 +12,7 @@ import math
 from tqdm import tqdm
 from typing import Dict, Any, List
 import random
+import ray
 
 @dataclass
 class AlphaZeroConfig:
@@ -19,19 +20,20 @@ class AlphaZeroConfig:
     batch_size: int = 64
     log_name: str = "alphazero"
     log_n: int = 100
-    eval_n: int = 1000
     save_n: int = 20000
     sim_n: int = 40
     prob_action_th: int = 3 #この手数に達するまでは探索回数に比例する確立で行動する
     dirichlet_alpha: float = 0.35
     episode: int = 100
     selfplay_n: int = 300
+    selfplay_para_n: int = 1 #selfplayの同時進行数
 
 class PVMCTS:
-    def __init__(self, network, alpha, env, c_puct=1.0, epsilon=0.25, num_sims=50):
+    def __init__(self, network, alpha, env, c_base=19652, c_init=1.25, epsilon=0.25, num_sims=50):
         self.network = network
         self.alpha = alpha
-        self.c_puct = c_puct
+        self.c_base = c_base
+        self.c_init = c_init
         self.eps = epsilon
 
         self.hash = env.hash
@@ -78,9 +80,9 @@ class PVMCTS:
         for valid_action in valid_actions:
             next_state, _ = self.env.next(state, valid_action, player)
             n = self.N[s][valid_action]
-            q = self.W[s][valid_action]
+            w = self.W[s][valid_action]
             p = self.P[s][valid_action]
-            analysys.append({"action":valid_action, "N":n, "P":p, "Q":q})
+            analysys.append({"action":valid_action, "N":n, "P":p, "W":w})
         
         analysys = sorted(analysys, key=lambda x: -x["N"])
         n_sum = sum([que["N"] for que in analysys])
@@ -88,9 +90,10 @@ class PVMCTS:
             act = que["action"]
             n = que["N"]
             p = que["P"]
-            q = que["Q"]
+            w = que["W"]
             print("{:5d}: {:7.1f}% ({:5d})(N), ".format(act, 100 * n/n_sum, n), end="")
-            if q < 0:
+            q = (w / n) if n != 0 else 0
+            if w < 0:
                 print('\033[31m' + "{:7.4f}".format(q) + '\033[0m' + "(Q), ", end="")
             else:
                 print('\033[32m' + "{:7.4f}".format(q) + '\033[0m' + "(Q), ", end="")
@@ -115,8 +118,8 @@ class PVMCTS:
 
         #: MCTS simulationの実行
         for _ in tqdm(range(num_simulations), leave=False):
-
-            U = [self.c_puct * self.P[s][a] * math.sqrt(sum(self.N[s])) / (1 + self.N[s][a])
+            cs = self.c_init + math.log((1 + sum(self.N[s]) + self.c_base) / self.c_base)
+            U = [cs * self.P[s][a] * math.sqrt(sum(self.N[s])) / (1 + self.N[s][a])
                  for a in range(self.action_num)]
             Q = [w / n if n != 0 else 0 for w, n in zip(self.W[s], self.N[s])]
             
@@ -186,7 +189,8 @@ class PVMCTS:
             #: この盤面でゲーム終了ではなく、かつこの盤面が展開済みの場合
             
             #: PUCTによってさらに子盤面を選択する
-            U = [self.c_puct * self.P[s][a] * math.sqrt(sum(self.N[s])) / (1 + self.N[s][a])
+            cs = self.c_init + math.log((1 + sum(self.N[s]) + self.c_base) / self.c_base)
+            U = [cs * self.P[s][a] * math.sqrt(sum(self.N[s])) / (1 + self.N[s][a])
                  for a in range(self.action_num)]
             Q = [q / n if n != 0 else q for q, n in zip(self.W[s], self.N[s])]
 
@@ -276,7 +280,6 @@ class AlphaZero:
         self.prob_act_th = config.prob_action_th
         self.episode = config.episode
         self.save_n = config.save_n
-        self.eval_n = config.eval_n
         self.selfplay_n = config.selfplay_n
 
         self.eval_func = eval_func
@@ -343,7 +346,7 @@ class AlphaZero:
             save_model(self.step, self.pv, self.log_name)
         
         return {
-            "v_loss": torch.sum(value_loss).item(),
-            "p_loss": torch.sum(policy_loss).item(),
-            "loss": loss.item()
+            "v_loss": "{:7.3f}".format(torch.sum(value_loss).item()),
+            "p_loss": "{:7.3f}".format(torch.sum(policy_loss).item()),
+            "loss": "{:7.3f}".format(loss.item())
         }
