@@ -26,7 +26,9 @@ class AlphaZeroConfig:
     dirichlet_alpha: float = 0.35
     episode: int = 100
     selfplay_n: int = 300
+    use_ray: bool = False
     selfplay_para_n: int = 1 #selfplayの同時進行数
+
 
 class PVMCTS:
     def __init__(self, network, alpha, env, c_base=19652, c_init=1.25, epsilon=0.25, num_sims=50):
@@ -72,7 +74,8 @@ class PVMCTS:
         return action
     
     def analyze_and_action(self, state, action_mask, reverse):
-        current_state = state.detach().numpy().astype(np.uint8)
+        # current_state = state.detach().numpy().astype(np.uint8)
+        current_state = state.astype(np.uint8)
         player = self.env.current_player(state)
         policy = self.search(current_state, player, self.num_sims, False)
         action = random.choice(np.where(np.array(policy) == max(policy))[0])
@@ -289,20 +292,22 @@ class AlphaZero:
         self.selfplay_para_n = config.selfplay_para_n
 
         self.eval_func = eval_func
+        self.use_ray = config.use_ray
 
     def train(self):
-        ray.init(num_cpus=2)
+        # rayを使用する時
+        if self.use_ray:
+            ray.init(num_cpus=2)
+            pv = ray.put(self.pv)
+            work_in_progresses = [
+                selfplay.remote(
+                    pv,
+                    self.num_sims, 
+                    env=self.env, 
+                    dirichlet_alpha=self.alpha, 
+                    prob_act_th=self.prob_act_th)
+                for _ in range(self.selfplay_para_n)]
 
-        pv = ray.put(self.pv)
-
-        work_in_progresses = [
-            selfplay.remote(
-                pv,
-                self.num_sims, 
-                env=self.env, 
-                dirichlet_alpha=self.alpha, 
-                prob_act_th=self.prob_act_th)
-            for _ in range(self.selfplay_para_n)]
 
         self.step = 0
         train_loop_n = self.episode
@@ -318,16 +323,19 @@ class AlphaZero:
 
             bar = tqdm(total=self.selfplay_n, desc="[selfplay]", leave=False)
             for _ in  range(self.selfplay_n):
-                # data = selfplay(mcts, self.num_sims, self.env, self.alpha, self.prob_act_th)
-                finished, work_in_progresses = ray.wait(work_in_progresses, num_returns=1)
-                self.memory.push_sequence(ray.get(finished[0]))
-                work_in_progresses.extend([
-                    selfplay.remote(
-                        pv,
-                        self.num_sims, 
-                        env=self.env, 
-                        dirichlet_alpha=self.alpha, 
-                        prob_act_th=self.prob_act_th)])
+                if self.use_ray:
+                    finished, work_in_progresses = ray.wait(work_in_progresses, num_returns=1)
+                    data = ray.get(finished[0])
+                    work_in_progresses.extend([
+                        selfplay.remote(
+                            pv,
+                            self.num_sims, 
+                            env=self.env, 
+                            dirichlet_alpha=self.alpha, 
+                            prob_act_th=self.prob_act_th)])
+                else:
+                    data = selfplay(mcts, self.num_sims, self.env, self.alpha, self.prob_act_th)
+                memory.push_sequence(data)
                 bar.update(1)
             bar.close()
             
