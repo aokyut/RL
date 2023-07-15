@@ -67,13 +67,16 @@ class PVMCTS:
     def get_action_eval(self, state, action_mask, reverse):
         state = state.detach().numpy().astype(np.uint8)
         player = self.env.current_player(state)
-        policy = self.search(state, player, self.num_sims)
+        policy = self.search(state, player, self.num_sims, True)
         action = random.choice(np.where(np.array(policy) == max(policy))[0])
         return action
     
     def analyze_and_action(self, state, action_mask, reverse):
-        action = self.get_action_eval(torch.tensor(state), action_mask, reverse)
+        current_state = state.detach().numpy().astype(np.uint8)
         player = self.env.current_player(state)
+        policy = self.search(current_state, player, self.num_sims, False)
+        action = random.choice(np.where(np.array(policy) == max(policy))[0])
+        # action = self.get_action_eval(torch.tensor(state), action_mask, reverse)
         valid_actions = self.env.get_valid_action(state, player)
         analysys = []
         s = self.state_to_str(state, player)
@@ -100,7 +103,7 @@ class PVMCTS:
             print("{:7.4f}(P_net)".format(p))
 
 
-    def search(self, root_state, current_player, num_simulations):
+    def search(self, root_state, current_player, num_simulations, disable_tqdm=True):
         
         #: dictのkeyにするために文字列化する
         s = self.state_to_str(root_state, current_player)
@@ -117,7 +120,7 @@ class PVMCTS:
             self.P[s][a] = (1 - self.eps) * self.P[s][a] + self.eps * noise
 
         #: MCTS simulationの実行
-        for _ in tqdm(range(num_simulations), leave=False):
+        for _ in tqdm(range(num_simulations), leave=False, disable=disable_tqdm):
             cs = self.c_init + math.log((1 + sum(self.N[s]) + self.c_base) / self.c_base)
             U = [cs * self.P[s][a] * math.sqrt(sum(self.N[s])) / (1 + self.N[s][a])
                  for a in range(self.action_num)]
@@ -211,7 +214,8 @@ class PVMCTS:
 
             return v
 
-def selfplay(mcts: PVMCTS, num_sim: int, env, dirichlet_alpha=0.35, prob_act_th=4) -> List[Dict[str, Any]]:
+@ray.remote(num_cpus=1)
+def selfplay(network: PVNet, num_sim: int, env, dirichlet_alpha=0.35, prob_act_th=4) -> List[Dict[str, Any]]:
     """
     TODO
     env.init
@@ -225,12 +229,13 @@ def selfplay(mcts: PVMCTS, num_sim: int, env, dirichlet_alpha=0.35, prob_act_th=
     """
     data = []
     state = env.init()
+    mcts = PVMCTS(network, alpha=dirichlet_alpha, env=env)
     current_player = 0
     done = False
     i = 0
 
     while not done:
-        mcts_policy = mcts.search(state, current_player, num_sim)
+        mcts_policy = mcts.search(state, current_player, num_sims)
 
         if i <= prob_act_th:
             action = np.random.choice(
@@ -281,10 +286,24 @@ class AlphaZero:
         self.episode = config.episode
         self.save_n = config.save_n
         self.selfplay_n = config.selfplay_n
+        self.selfplay_para_n = config.selfplay_para_n
 
         self.eval_func = eval_func
 
     def train(self):
+        ray.init(num_cpus=2)
+
+        pv = ray.put(self.pv)
+
+        work_in_progresses = [
+            selfplay.remote(
+                pv,
+                self.num_sims, 
+                env=self.env, 
+                dirichlet_alpha=self.alpha, 
+                prob_act_th=self.prob_act_th)
+            for _ in range(self.selfplay_para_n)]
+
         self.step = 0
         train_loop_n = self.episode
         for i in tqdm(range(train_loop_n), desc="[train loop]"):
@@ -295,14 +314,20 @@ class AlphaZero:
                 self.writer.add_scalar(key, val, i * self.selfplay_n)
 
             # self.memory = ReplayMemory(self.buffer_size, self.batch_size)
-            mcts = PVMCTS(self.pv, self.alpha, self.env, num_sims=self.num_sims)
-            i = 0
+            # mcts = PVMCTS(self.pv, self.alpha, self.env, num_sims=self.num_sims)
+
             bar = tqdm(total=self.selfplay_n, desc="[selfplay]", leave=False)
-            while i < self.selfplay_n:
-                i += 1
-                data = selfplay(mcts, self.num_sims, self.env, self.alpha, self.prob_act_th)
-                self.memory.push_sequence(data)
-                bar.set_postfix(step=i)
+            for _ in  range(self.selfplay_n):
+                # data = selfplay(mcts, self.num_sims, self.env, self.alpha, self.prob_act_th)
+                finished, work_in_progresses = ray.wait(work_in_progresses, num_returns=1)
+                self.memory.push_sequence(ray.get(finished[0]))
+                work_in_progresses.extend([
+                    selfplay.remote(
+                        pv,
+                        self.num_sims, 
+                        env=self.env, 
+                        dirichlet_alpha=self.alpha, 
+                        prob_act_th=self.prob_act_th)])
                 bar.update(1)
             bar.close()
             
