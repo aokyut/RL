@@ -62,7 +62,10 @@ class ReplayMemory(memory.Memory):
         pass
 
     def sample(self):
-        data_sequence = random.sample(self.buffer, self.batch_size)
+        if len(self.buffer) < self.batch_size:
+            data_sequence = random.sample(self.buffer, len(self.buffer))
+        else:
+            data_sequence = random.sample(self.buffer, self.batch_size)
 
         keys = data_sequence[0].keys()
 

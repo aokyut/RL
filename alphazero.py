@@ -1,5 +1,5 @@
 from network import PVNet
-from utills import ConfigParser, save_model
+from utills import ConfigParser, save_model, huber_error, hard_update
 from dataclasses import dataclass
 from memory import ReplayMemory
 from os.path import join
@@ -13,6 +13,7 @@ from tqdm import tqdm
 from typing import Dict, Any, List
 import random
 import ray
+from envs.base import play, ModelAgent
 
 @dataclass
 class AlphaZeroConfig:
@@ -28,10 +29,11 @@ class AlphaZeroConfig:
     selfplay_n: int = 300
     use_ray: bool = False
     selfplay_para_n: int = 1 #selfplayの同時進行数
+    epoch: int = 10 # 学習の際にバッファー何回分の学習を回すかの設定
 
 
 class PVMCTS:
-    def __init__(self, network, alpha, env, c_base=19652, c_init=1.25, epsilon=0.25, num_sims=50):
+    def __init__(self, network, alpha, env, c_base=19652, c_init=1.00, epsilon=0.25, num_sims=50):
         self.network = network
         self.alpha = alpha
         self.c_base = c_base
@@ -121,12 +123,15 @@ class PVMCTS:
         dirichlet_noise = np.random.dirichlet(alpha=[self.alpha]*len(valid_actions))
         for a, noise in zip(valid_actions, dirichlet_noise):
             self.P[s][a] = (1 - self.eps) * self.P[s][a] + self.eps * noise
+        # sim_n = max(num_simulations - sum(self.N[s]), 0)
 
         #: MCTS simulationの実行
         for _ in tqdm(range(num_simulations), leave=False, disable=disable_tqdm):
             cs = self.c_init + math.log((1 + sum(self.N[s]) + self.c_base) / self.c_base)
             U = [cs * self.P[s][a] * math.sqrt(sum(self.N[s])) / (1 + self.N[s][a])
                  for a in range(self.action_num)]
+            # U = [cs * math.sqrt(sum(self.N[s])) / (1 + self.N[s][a])
+                #  for a in range(self.action_num)]
             Q = [w / n if n != 0 else 0 for w, n in zip(self.W[s], self.N[s])]
             
             #: PUCTスコアの算出
@@ -190,7 +195,6 @@ class PVMCTS:
             #: この盤面のニューラルネット評価値を返す
             nn_value = self._expand(state, current_player)
             return nn_value
-
         else:
             #: この盤面でゲーム終了ではなく、かつこの盤面が展開済みの場合
             
@@ -198,6 +202,8 @@ class PVMCTS:
             cs = self.c_init + math.log((1 + sum(self.N[s]) + self.c_base) / self.c_base)
             U = [cs * self.P[s][a] * math.sqrt(sum(self.N[s])) / (1 + self.N[s][a])
                  for a in range(self.action_num)]
+            # U = [cs * 1 * math.sqrt(sum(self.N[s])) / (1 + self.N[s][a])
+            #      for a in range(self.action_num)]
             Q = [q / n if n != 0 else q for q, n in zip(self.W[s], self.N[s])]
 
             valid_actions = self.get_valid_actions(state, current_player)
@@ -217,8 +223,8 @@ class PVMCTS:
 
             return v
 
-@ray.remote(num_cpus=1)
-def selfplay(network: PVNet, num_sim: int, env, dirichlet_alpha=0.35, prob_act_th=4) -> List[Dict[str, Any]]:
+# @ray.remote(num_cpus=1)
+def selfplay(network:PVNet, num_sim: int, env, dirichlet_alpha=0.35, prob_act_th=4) -> List[Dict[str, Any]]:
     """
     TODO
     env.init
@@ -238,9 +244,9 @@ def selfplay(network: PVNet, num_sim: int, env, dirichlet_alpha=0.35, prob_act_t
     i = 0
 
     while not done:
-        mcts_policy = mcts.search(state, current_player, num_sims)
+        mcts_policy = mcts.search(state, current_player, num_sim)
 
-        if i <= prob_act_th:
+        if i < prob_act_th:
             action = np.random.choice(
                 range(env.action_num), p=mcts_policy)
         else:
@@ -271,7 +277,6 @@ def selfplay(network: PVNet, num_sim: int, env, dirichlet_alpha=0.35, prob_act_t
     return data
 
 
-
 class AlphaZero:
     def __init__(self, pv: PVNet, config: AlphaZeroConfig, env, eval_func):
         self.pv = pv
@@ -293,6 +298,7 @@ class AlphaZero:
 
         self.eval_func = eval_func
         self.use_ray = config.use_ray
+        self.epoch = config.epoch
 
     def train(self):
         # rayを使用する時
@@ -312,6 +318,7 @@ class AlphaZero:
         self.step = 0
         train_loop_n = self.episode
         for i in tqdm(range(train_loop_n), desc="[train loop]"):
+            self.pv.eval()
             result = self.eval_func(
                PVMCTS(self.pv, alpha=0.35, env=self.env, epsilon=0, num_sims=self.num_sims)
             )
@@ -319,7 +326,8 @@ class AlphaZero:
                 self.writer.add_scalar(key, val, i * self.selfplay_n)
 
             # self.memory = ReplayMemory(self.buffer_size, self.batch_size)
-            # mcts = PVMCTS(self.pv, self.alpha, self.env, num_sims=self.num_sims)
+            if not self.use_ray:
+                mcts = PVMCTS(self.pv, self.alpha, self.env, num_sims=self.num_sims)
 
             bar = tqdm(total=self.selfplay_n, desc="[selfplay]", leave=False)
             for _ in  range(self.selfplay_n):
@@ -334,17 +342,20 @@ class AlphaZero:
                             dirichlet_alpha=self.alpha, 
                             prob_act_th=self.prob_act_th)])
                 else:
-                    data = selfplay(mcts, self.num_sims, self.env, self.alpha, self.prob_act_th)
-                memory.push_sequence(data)
+                    data = selfplay(self.pv, self.num_sims, self.env, self.alpha, self.prob_act_th)
+                self.memory.push_sequence(data)
                 bar.update(1)
             bar.close()
             
 
-            iter_n = 5 * len(self.memory.buffer) // self.batch_size
+            iter_n = self.epoch * len(self.memory.buffer) // self.batch_size
             bar = tqdm(range(iter_n), desc="[update]", smoothing=0.99, leave=False)
+            self.pv.train()
             for i in bar:
                 result = self.optimize()
                 bar.set_postfix(result)
+        
+            save_model("latest", self.pv, self.log_name)
 
 
 
@@ -358,11 +369,12 @@ class AlphaZero:
         net_policy, net_value = self.pv(state)
 
         td_error = reward - net_value
-        value_loss = torch.sum(torch.square(td_error))
+        value_loss = torch.square(td_error)
+        # value_loss = huber_error(torch.square(td_error))
 
-        policy_loss = -mcts_policy * torch.log(net_policy + 0.0001)
+        policy_error = -mcts_policy * torch.log(net_policy + 0.0001)
         policy_loss = torch.sum(
-            policy_loss, axis=1, keepdims=True)
+            policy_error, axis=1, keepdims=True)
 
         loss = torch.mean(value_loss + policy_loss)
 
@@ -371,8 +383,8 @@ class AlphaZero:
         self.optim.step()
 
         if self.step % self.log_n == 0:
-            self.writer.add_scalar("loss/value_loss", torch.sum(value_loss).item(), self.step)
-            self.writer.add_scalar("loss/policy_loss", torch.sum(policy_loss).item(), self.step)
+            self.writer.add_scalar("loss/value_loss", torch.mean(value_loss).item(), self.step)
+            self.writer.add_scalar("loss/policy_loss", torch.mean(policy_loss).item(), self.step)
             self.writer.add_scalar("loss/sum_loss", loss.item(), self.step)
 
         if self.step % self.save_n == 0:

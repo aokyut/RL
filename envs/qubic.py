@@ -4,10 +4,13 @@ import random
 from .base import BaseBoardEnv
 from typing import Tuple, Dict, List
 
+diagonal = (0, 1, 2, 3)
+
 def check(board: np.ndarray) -> bool:
     """
     board_array: np.ndarray[64]
     """
+    
     if np.sum(board[0] * board[21] * board[42] * board[63]) > 0:
         return True
     board = board.reshape([4, 4, 4,])
@@ -16,6 +19,14 @@ def check(board: np.ndarray) -> bool:
     if np.sum(np.prod(board, axis=1)) > 0:
         return True
     if np.sum(np.prod(board, axis=2)) > 0:
+        return True
+    if np.sum(np.prod(board[diagonal, diagonal, :], axis=1)) > 0:
+        return True
+    if np.sum(np.prod(board[diagonal, :, diagonal], axis=1)) > 0:
+        return True
+    if np.sum(np.prod(board[:, diagonal, diagonal], axis=1)) > 0:
+        return True
+    if np.prod(board[diagonal, diagonal, diagonal], axis=0) > 0:
         return True
     
     return False

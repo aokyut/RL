@@ -155,12 +155,13 @@ class BottleNeckBlock(nn.Module, Block):
         super().__init__()
         self.layers = nn.Sequential(
             nn.Conv2d(channel, channel // 4, kernel_size=1),
-            # nn.BatchNorm2d(channel // 4),
+            nn.BatchNorm2d(channel // 4),
             nn.ReLU(),
             nn.Conv2d(channel // 4, channel // 4, kernel_size=3, padding=1),
-            # nn.BatchNorm2d(channel // 4),
+            nn.BatchNorm2d(channel // 4),
             nn.ReLU(),
-            nn.Conv2d(channel // 4, channel, kernel_size=1)
+            nn.Conv2d(channel // 4, channel, kernel_size=1),
+            nn.BatchNorm2d(channel),
         )
     
     def forward(self, x):
@@ -172,6 +173,11 @@ class ResNet(nn.Module):
     def __init__(self, in_ch: int, out_ch: int, hidden_ch: int, block_n: int, block_type: type):
         assert issubclass(block_type, Block) and block_type != Block
         super().__init__()
+        self.in_ch = in_ch
+        self.out_ch = out_ch
+        self.hidden_ch = hidden_ch
+        self.block_n = block_n
+        self.block_type = block_type
         self.resblocks = nn.Sequential()
         self.resblocks.add_module(
             "conv2d-input", nn.Conv2d(in_ch, hidden_ch, kernel_size=1)
@@ -192,6 +198,11 @@ class ResNet(nn.Module):
 
     def forward(self, x):
         return self.resblocks(x)
+    
+    def clone(self):
+        return ResNet(
+            self.in_ch, self.out_ch, self.hidden_ch, self.block_n, self.block_type
+        )
 
 
 class PVNet(nn.Module):
@@ -214,12 +225,22 @@ class PVNet(nn.Module):
         prob = self.policy(x)
         value = self.value(x)
         return prob, value
+    
+    def clone(self):
+        return PVNet(
+            self.input_layer.clone(),
+            self.policy.clone(),
+            self.value.clone(),
+            self.in_shape)
 
 
 class Policy2d(nn.Module, Policy):
     def __init__(self, in_ch, out_ch, in_fc, out_fc):
         super().__init__()
         self.in_fc = in_fc
+        self.out_ch = out_ch
+        self.in_ch = in_ch
+        self.out_fc = out_fc
         self.conv1 = nn.Conv2d(in_ch, out_ch, kernel_size=1)
         self.fc1 = nn.Linear(in_fc, out_fc)
 
@@ -228,10 +249,15 @@ class Policy2d(nn.Module, Policy):
         x = x.reshape(-1, self.in_fc)
         x = self.fc1(x)
         return F.softmax(x, dim=-1)
+    
+    def clone(self):
+        return Policy2d(self.in_ch, self.out_ch, self.in_fc, self.out_fc)
 
 class Value2d(nn.Module, Value):
     def __init__(self, in_ch, out_ch, in_fc):
         super().__init__()
+        self.in_ch = in_ch
+        self.out_ch = out_ch
         self.in_fc = in_fc
         self.conv1 = nn.Conv2d(in_ch, out_ch, kernel_size=1)
         self.fc1 = nn.Linear(in_fc, 1)
@@ -241,3 +267,7 @@ class Value2d(nn.Module, Value):
         x = x.reshape(-1, self.in_fc)
         x = self.fc1(x)
         return torch.tanh(x)
+    
+    def clone(self):
+        return Value2d(self.in_ch, self.out_ch, self.in_fc)
+

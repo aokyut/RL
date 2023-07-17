@@ -5,6 +5,7 @@ from collections import namedtuple
 import torch
 from tqdm import tqdm
 import abc
+import math
 
 Transition = namedtuple(
     "Transition",
@@ -52,11 +53,19 @@ class BaseBoardEnv(gym.Env, metaclass=abc.ABCMeta):
         super(BaseBoardEnv, self).__init__()
         self.player = 0
         self.step = self.step_dec(self.step)
+        self.reset = self.reset_dec(self.reset)
 
     def step_dec(self, f):
         def _wrapper(*arg, **keywords):
             result = f(*arg, **keywords)
             self.player = 1 - self.player
+            return result
+        return _wrapper
+    
+    def reset_dec(self, f):
+        def _wrapper(*arg, **keywords):
+            result = f(*arg, **keywords)
+            self.player = 0
             return result
         return _wrapper
     
@@ -97,13 +106,15 @@ class BaseBoardEnv(gym.Env, metaclass=abc.ABCMeta):
     def get_random_action(self) -> int:
         raise NotImplementedError()
 
-class Agent:
+class Agent(metaclass=abc.ABCMeta):
     def __init__(self):
         pass
 
+    @abc.abstractmethod
     def get_action_eval(self, env: BaseBoardEnv, state: np.ndarray, action_mask: np.ndarray) -> int:
         raise NotImplementedError()
-    
+
+    @abc.abstractmethod    
     def get_action_expl(self, env: BaseBoardEnv, state: np.ndarray, action_mask: np.ndarray) -> int:
         raise NotImplementedError()
 
@@ -115,6 +126,49 @@ class RandomAgent(Agent):
     
     def get_action(self, env: BaseBoardEnv, _hoge: np.ndarray, _fuga: np.ndarray) -> int:
         return env.get_random_action()
+    
+    def get_action_expl(self):
+        pass
+
+    def get_action_eval(self):
+        pass
+
+class MiniMaxAgent(Agent):
+    def __init__(self, depth):
+        self.name = f"MiniMaxAgent[{depth}]"
+        self.max_rec = depth
+        self.get_action_eval = self.get_action
+        self.get_action_expl = self.get_action
+    
+    def get_action_eval(self):
+        pass
+
+    def get_action_expl(self):
+        pass
+    
+    def get_action(self, env: MCTSAbleEnv, state: np.ndarray, action_mask: np.ndarray) -> int:
+        def search(rec: int, max_rec: int, state: np.ndarray, player: int):
+            valid_action = env.get_valid_action(state, player)
+            result = []
+            for action in valid_action:
+                next_state, isdone = env.next(state, action, player)
+                if isdone:
+                    reward_first, reward_second = env.result(next_state)
+                    reward = reward_first if player == 0 else reward_second
+                    if reward == 1:
+                        return (action, reward)
+                elif rec!=max_rec:
+                    searched_result = search(rec+1, max_rec, next_state, 1-player)
+                    if searched_result[1] == -1:
+                        return (action, 1)
+                    reward = -searched_result[1] 
+                else:
+                    reward = 0
+                result.append((action, reward))
+            return max(result, key=lambda x: x[1])
+        return search(0, self.max_rec, state, env.current_player(state))[0]
+
+
 
 class ModelAgent(Agent):
     def __init__(self, model):
@@ -226,3 +280,42 @@ def get_eval_func(env:BaseBoardEnv, agents: List[Agent], eval_n: int) -> Callabl
             score[f"eval/{agent.name}/score"] = (win_black + win_white + draw_black / 2 + draw_white / 2) / eval_n
         return score
     return eval_func
+
+
+def compare_agents(env: BaseBoardEnv, agents: List[Agent], eval_n, K=32) -> Dict[str, float]:
+    def calculate_point(winner_rate, loser_rate):
+        point = K / (10 ** ( (winner_rate - loser_rate) / 400 ) + 1)
+        return point
+    
+    points = {}
+    for i in range(len(agents)):
+        points[i] = 1500
+
+    for k in tqdm(range(eval_n)):
+        for i in tqdm(range(len(agents)), leave=False):
+            bar = tqdm(range(len(agents)), leave=False)
+            for j in bar:
+                if i == j: continue
+                bar.set_postfix(agent1=agents[i].name, agent2=agents[j].name)
+                result = play(env, agents[i], agents[j], True)
+                if result[0]:
+                    point_i = points[i]
+                    point_j = points[j]
+                    move_point = calculate_point(point_i, point_j)
+                    points[i] += move_point
+                    points[j] -= move_point
+                elif result[1]:
+                    point_i = points[i]
+                    point_j = points[j]
+                    move_point = calculate_point(point_j, point_i)
+                    points[i] -= move_point
+                    points[j] += move_point
+                else:
+                    point_i = points[i]
+                    point_j = points[j]
+                    move_point1 = calculate_point(point_j, point_i)
+                    move_point2 = calculate_point(point_i, point_j)
+                    points[i] -= move_point1 - move_point2
+                    points[j] += move_point1 - move_point2
+    for i in range(len(agents)):
+        print(f"{agents[i].name}: {points[i]}")
