@@ -1,5 +1,5 @@
 from network import PVNet
-from utills import ConfigParser, save_model, huber_error, hard_update
+from utills import ConfigParser, _save_model, huber_error, hard_update
 from dataclasses import dataclass
 from memory import ReplayMemory
 from os.path import join
@@ -30,6 +30,7 @@ class AlphaZeroConfig:
     use_ray: bool = False
     selfplay_para_n: int = 1 #selfplayの同時進行数
     epoch: int = 10 # 学習の際にバッファー何回分の学習を回すかの設定
+    save_dir: str = "checkpoint"
 
 
 class PVMCTS:
@@ -41,10 +42,10 @@ class PVMCTS:
         self.eps = epsilon
 
         self.hash = env.hash
-        self.next = env.next
-        self.is_done = env.isdone
+        self.next = env.get_next
+        self.is_done = env.is_done
         self.result = env.result
-        self.get_valid_actions = env.get_valid_action
+        self.get_valid_actions = env.valid_actions
         self.action_num = env.action_num
         self.env = env
 
@@ -69,7 +70,7 @@ class PVMCTS:
             )
     
     def get_action_eval(self, state, action_mask, reverse):
-        state = state.detach().numpy().astype(np.uint8)
+        # state = state.detach().numpy().astype(np.uint8)
         player = self.env.current_player(state)
         policy = self.search(state, player, self.num_sims, True)
         action = random.choice(np.where(np.array(policy) == max(policy))[0])
@@ -171,7 +172,7 @@ class PVMCTS:
 
         #: パフォーマンスが向上のために次の状態を保存しておく
         self.next_states[s] = [
-            self.next(state, action, current_player)[0]
+            self.next(state, action, current_player)
             if (action in valid_actions) else None
             for action in range(self.action_num)]
 
@@ -227,14 +228,14 @@ class PVMCTS:
 def selfplay(network:PVNet, num_sim: int, env, dirichlet_alpha=0.35, prob_act_th=4) -> List[Dict[str, Any]]:
     """
     TODO
-    env.init
-    env.hash
-    env.next
-    env.isdone
-    env.result
-    env.get_valid_action
-    env.action_num
-    env.current_player
+    env.init() -> ndarray
+    env.hash(state) -> str
+    env.next(state, action, player) -> ndarray
+    env.isdone(state, player) -> bool
+    env.result(state) -> [int, int]
+    env.get_valid_action(state, player) -> List[int]
+    env.action_num -> int
+    env.current_player(state) -> int
     """
     data = []
     state = env.init()
@@ -262,7 +263,8 @@ def selfplay(network:PVNet, num_sim: int, env, dirichlet_alpha=0.35, prob_act_th
             "player": env.current_player(state)
         })
 
-        next_state, done = env.next(state, action, current_player)
+        next_state = env.get_next(state, action, current_player)
+        done = env.is_done(next_state, current_player)
 
         state = next_state
         current_player = 1 - current_player
@@ -299,6 +301,7 @@ class AlphaZero:
         self.eval_func = eval_func
         self.use_ray = config.use_ray
         self.epoch = config.epoch
+        self.save_dir = config.save_dir
 
     def train(self):
         # rayを使用する時
@@ -317,7 +320,7 @@ class AlphaZero:
 
         self.step = 0
         train_loop_n = self.episode
-        for i in tqdm(range(train_loop_n), desc="[train loop]"):
+        for i in tqdm(range(train_loop_n), desc="[train loop]", smoothing=0.999):
             self.pv.eval()
             result = self.eval_func(
                PVMCTS(self.pv, alpha=0.35, env=self.env, epsilon=0, num_sims=self.num_sims)
@@ -329,7 +332,7 @@ class AlphaZero:
             if not self.use_ray:
                 mcts = PVMCTS(self.pv, self.alpha, self.env, num_sims=self.num_sims)
 
-            bar = tqdm(total=self.selfplay_n, desc="[selfplay]", leave=False)
+            bar = tqdm(total=self.selfplay_n, desc="[selfplay]", leave=False, smoothing=0.99)
             for _ in  range(self.selfplay_n):
                 if self.use_ray:
                     finished, work_in_progresses = ray.wait(work_in_progresses, num_returns=1)
@@ -355,7 +358,7 @@ class AlphaZero:
                 result = self.optimize()
                 bar.set_postfix(result)
         
-            save_model("latest", self.pv, self.log_name)
+            _save_model(self.save_dir, self.log_name, "latest", self.pv)
 
 
 
@@ -388,7 +391,7 @@ class AlphaZero:
             self.writer.add_scalar("loss/sum_loss", loss.item(), self.step)
 
         if self.step % self.save_n == 0:
-            save_model(self.step, self.pv, self.log_name)
+            _save_model(self.save_dir, self.log_name, self.step, self.pv)
         
         return {
             "v_loss": "{:7.3f}".format(torch.sum(value_loss).item()),

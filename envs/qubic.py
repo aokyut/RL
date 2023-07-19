@@ -5,6 +5,24 @@ from .base import BaseBoardEnv
 from typing import Tuple, Dict, List
 
 diagonal = (0, 1, 2, 3)
+rev_diag = (3, 2, 1, 0)
+
+def show(board):
+    s = ""
+    for i in range(4):
+        for j in range(4):
+            for k in range(4):
+                idx = 4 * i + 16 * j + k
+                if board[idx] == 1:
+                    s += "O"
+                elif board[idx + 64] == 1:
+                    s += "X"
+                else:
+                    s += "-"
+            if j == 3: break
+            s += "＿/￣"
+        s += "\n"
+    print(s)
 
 def check(board: np.ndarray) -> bool:
     """
@@ -22,17 +40,26 @@ def check(board: np.ndarray) -> bool:
         return True
     if np.sum(np.prod(board[diagonal, diagonal, :], axis=1)) > 0:
         return True
+    if np.sum(np.prod(board[diagonal, rev_diag, :], axis=1)) > 0:
+        return True
     if np.sum(np.prod(board[diagonal, :, diagonal], axis=1)) > 0:
+        return True
+    if np.sum(np.prod(board[diagonal, :, rev_diag], axis=1)) > 0:
         return True
     if np.sum(np.prod(board[:, diagonal, diagonal], axis=1)) > 0:
         return True
+    if np.sum(np.prod(board[:, diagonal, rev_diag], axis=1)) > 0:
+        return True
     if np.prod(board[diagonal, diagonal, diagonal], axis=0) > 0:
+        return True
+    if np.prod(board[diagonal, rev_diag, diagonal], axis=0) > 0:
+        return True
+    if np.prod(board[rev_diag, diagonal, diagonal], axis=0) > 0:
+        return True
+    if np.prod(board[diagonal, diagonal, rev_diag], axis=0) > 0:
         return True
     
     return False
-
-def show(board_array: np.ndarray):
-    print(board_array)
 
 class Qubic(BaseBoardEnv):
     action_num=16

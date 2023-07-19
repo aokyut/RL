@@ -28,7 +28,14 @@ def save_model(step, model, name):
     model_dir = path.join("checkpoint", name)
     model_path = path.join(model_dir, f"{step}.pth")
     if not path.exists(model_dir):
-            os.makedirs(model_dir)
+        os.makedirs(model_dir)
+    torch.save(model.state_dict(), model_path)
+
+def _save_model(save_dir, save_name, model_name, model):
+    model_dir = path.join(save_dir, save_name)
+    model_path = path.join(model_dir, f"{model_name}.pth")
+    if not path.exists(model_dir):
+        os.makedirs(model_dir)
     torch.save(model.state_dict(), model_path)
 
 # TODO: 入力を対話的に行えるようにする。

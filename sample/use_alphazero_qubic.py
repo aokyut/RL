@@ -11,7 +11,7 @@ from alphazero import PVMCTS
 
 input_net = ResNet(
     in_ch=8, out_ch=16, 
-    hidden_ch=32, block_n=3, block_type=BottleNeckBlock,
+    hidden_ch=16, block_n=4, block_type=BottleNeckBlock,
 )
 
 policy_net = Policy2d(
@@ -35,17 +35,24 @@ pv = PVNet(input_layer=input_net,
 
 pv.load_state_dict(torch.load("../checkpoint/alphazero_qubic/latest.pth"))
 
-env = Qubic()
+from main import eval_func
 
 network = PVMCTS(pv, 0.35, epsilon=0, num_sims=50, env=env)
+print(eval_func(network))
+
+exit(0)
+
+env = Qubic()
+
 state, info = env.reset()
 action_mask = info["action_mask"]
-# agents = [
-#     RandomAgent(),
-#     MiniMaxAgent(3),
-#     ModelAgent(network)
-# ]
-# compare_agents(env = env, agents=agents, eval_n=5)
+agents = [
+    RandomAgent(),
+    MiniMaxAgent(1),
+    MiniMaxAgent(0),
+    # ModelAgent(network)
+]
+compare_agents(env = env, agents=agents, eval_n=5)
 
 while True:
     print(env.render())
