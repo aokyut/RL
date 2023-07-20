@@ -6,6 +6,8 @@ from PyBGEnv import qubic
 from tqdm import tqdm
 import random
 from argparse import ArgumentParser
+import os
+import torch
 
 input_net = ResNet(
     in_ch=8, out_ch=16, 
@@ -40,20 +42,16 @@ def play(agent1, agent2):
         t += 1
         action_mask = env.get_action_mask(state)
         agent = agents[player]
-        print(agent.name)
         action = agent.get_action(env, state, action_mask)
         next_state = env.get_next(state, action, player)
-        show(state)
         state = next_state
         res = env.is_win(next_state, player)
         if res:
-            show(state)
             if player == 0:
                 return 1
             else:
                 return -1
         if env.is_draw(next_state):
-            show(state)
             return 0
         player = 1 - player
 
@@ -84,7 +82,7 @@ def eval_func(model):
     tar_agent = ModelAgent(model)
     agents = [
         RandomAgent(),
-        # MiniMaxAgent(1),
+        MiniMaxAgent(1),
     ]
     record = {}
     for agent in agents:
@@ -129,6 +127,8 @@ config = AlphaZeroConfig(
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--save_dir", default="checkpoint", type=str)
+    parser.add_argument("--load", action="store_true", default=False)
+    parser.add_argument("--load_path", str, default="hoge")
     parser.add_argument("--buffer_size", default=40000, type=int)
     parser.add_argument("--epoch", default=10, type=int)
     parser.add_argument("--episode", default=200, type=int)
@@ -138,6 +138,12 @@ if __name__ == "__main__":
     config.buffer_size = args.buffer_size
     config.epoch = args.epoch
     config.episode = args.episode
+
+    if config.load:
+        path = load_path
+        assert os.path.exists(path)
+        pv.load_state_dict(torch.load(path))
+            
 
     alphazero  = AlphaZero(pv, config, env, eval_func)
 
