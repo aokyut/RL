@@ -280,6 +280,10 @@ def selfplay(network:PVNet, num_sim: int, env, dirichlet_alpha=0.35, prob_act_th
     
     return data
 
+# rayを使用する際
+selfplay_para = ray.remote(num_cpu=1)(selfplay)
+
+
 def play(agent1, agent2, env):
     state = env.init()
     agents = [agent1, agent2]
@@ -361,7 +365,7 @@ class AlphaZero:
             ray.init(num_cpus=2)
             pv = ray.put(self.pv)
             work_in_progresses = [
-                selfplay.remote(
+                selfplay_para.remote(
                     pv,
                     self.num_sims, 
                     env=self.env, 
@@ -392,7 +396,7 @@ class AlphaZero:
                     finished, work_in_progresses = ray.wait(work_in_progresses, num_returns=1)
                     data = ray.get(finished[0])
                     work_in_progresses.extend([
-                        selfplay.remote(
+                        selfplay_para.remote(
                             pv,
                             self.num_sims, 
                             env=self.env, 
@@ -414,15 +418,15 @@ class AlphaZero:
 
             self.pv.eval()
 
-            win_rate_best, win_rate_new = eval_model_agents(self.best_model, self.pv, self.env, self.eval_best_n, self.alpha, self.num_sims)
-            self.writer.add_scalar("eval/win_rate_new", win_rate_new, i * self.selfplay_n)
-            if win_rate_new >= self.change_best_r:
-                print(f"change best model:{self.best_gen} -> {i}")
-                self.best_gen = i
-                hard_update(self.best_model, self.pv)
-            else:
-                hard_update(self.pv, self.best_model)
-            self.writer.add_scalar("eval/best_model_gen", self.best_gen, i * self.selfplay_n)
+            # win_rate_best, win_rate_new = eval_model_agents(self.best_model, self.pv, self.env, self.eval_best_n, self.alpha, self.num_sims)
+            # self.writer.add_scalar("eval/win_rate_new", win_rate_new, i * self.selfplay_n)
+            # if win_rate_new >= self.change_best_r:
+            #     print(f"change best model:{self.best_gen} -> {i}")
+            #     self.best_gen = i
+            #     hard_update(self.best_model, self.pv)
+            # else:
+            #     hard_update(self.pv, self.best_model)
+            # self.writer.add_scalar("eval/best_model_gen", self.best_gen, i * self.selfplay_n)
         
             _save_model(self.save_dir, self.log_name, "latest", self.pv)
 
