@@ -82,7 +82,7 @@ def eval_func(model):
     tar_agent = ModelAgent(model)
     agents = [
         RandomAgent(),
-        MiniMaxAgent(1),
+        MiniMaxAgent(2),
     ]
     record = {}
     for agent in agents:
@@ -128,6 +128,7 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--save_dir", default="checkpoint", type=str)
     parser.add_argument("--load", action="store_true", default=False)
+    parser.add_argument("--use_ray", action="store_true", default=False)
     parser.add_argument("--load_path", type=str, default="hoge")
     parser.add_argument("--buffer_size", default=40000, type=int)
     parser.add_argument("--epoch", default=10, type=int)
@@ -138,6 +139,7 @@ if __name__ == "__main__":
     config.buffer_size = args.buffer_size
     config.epoch = args.epoch
     config.episode = args.episode
+    config.use_ray = args.use_ray
 
     if args.load:
         path = args.load_path
