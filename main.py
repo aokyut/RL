@@ -8,21 +8,22 @@ import random
 from argparse import ArgumentParser
 import os
 import torch
+from utills import parse_from_dataclass
 
 input_net = ResNet(
-    in_ch=8, out_ch=16, 
-    hidden_ch=16, block_n=4, block_type=BottleNeckBlock,
+    in_ch=8, out_ch=32, 
+    hidden_ch=128, block_n=4, block_type=BottleNeckBlock,
 )
 
 policy_net = Policy2d(
-    in_ch=16,
+    in_ch=32,
     out_ch=8,
     in_fc=128,
     out_fc=16
 )
 
 value_net = Value2d(
-    in_ch=16,
+    in_ch=32,
     out_ch=8,
     in_fc=128
 )
@@ -82,7 +83,7 @@ def eval_func(model):
     tar_agent = ModelAgent(model)
     agents = [
         RandomAgent(),
-        MiniMaxAgent(2),
+        MiniMaxAgent(1),
     ]
     record = {}
     for agent in agents:
@@ -125,24 +126,26 @@ config = AlphaZeroConfig(
 )
 
 if __name__ == "__main__":
-    parser = ArgumentParser()
-    parser.add_argument("--save_dir", default="checkpoint", type=str)
-    parser.add_argument("--load", action="store_true", default=False)
-    parser.add_argument("--use_ray", action="store_true", default=False)
-    parser.add_argument("--load_path", type=str, default="hoge")
-    parser.add_argument("--buffer_size", default=40000, type=int)
-    parser.add_argument("--epoch", default=10, type=int)
-    parser.add_argument("--episode", default=200, type=int)
-    args = parser.parse_args()
+    # parser = ArgumentParser()
+    # parser.add_argument("--save_dir", default="checkpoint", type=str)
+    # parser.add_argument("--load", action="store_true", default=False)
+    # parser.add_argument("--use_ray", action="store_true", default=False)
+    # parser.add_argument("--load_path", type=str, default="hoge")
+    # parser.add_argument("--buffer_size", default=40000, type=int)
+    # parser.add_argument("--epoch", default=10, type=int)
+    # parser.add_argument("--episode", default=200, type=int)
+    # args = parser.parse_args()
 
-    config.save_dir = args.save_dir
-    config.buffer_size = args.buffer_size
-    config.epoch = args.epoch
-    config.episode = args.episode
-    config.use_ray = args.use_ray
+    # config.save_dir = args.save_dir
+    # config.buffer_size = args.buffer_size
+    # config.epoch = args.epoch
+    # config.episode = args.episode
+    # config.use_ray = args.use_ray
 
-    if args.load:
-        path = args.load_path
+    config = parse_from_dataclass(AlphaZeroConfig)
+
+    if config.load:
+        path = config.load_path
         assert os.path.exists(path)
         pv.load_state_dict(torch.load(path))
             

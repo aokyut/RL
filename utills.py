@@ -4,6 +4,7 @@ import json
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from argparse import ArgumentParser
 
 def categorical_sigmoid_policy(value, action_mask):
     return F.sigmoid(value) * action_mask
@@ -137,4 +138,20 @@ class ConfigParser:
         self.setting_file[self.name] = self.args
         with open(self.setting_path, 'wt') as f:
             json.dump(self.setting_file, f, indent=2)
-        
+
+def parse_from_dataclass(tar_dclass):
+    src_dict = tar_class.__dataclass_fields__
+    parser = ArgumentParser()
+    for key, val in src_dict.items():
+        if val.type != bool:
+            parser.add_argument(f"--{val.name}", type=val.type, default=val.default)
+        else:
+            if val.default:
+                parser.add_argument(f"--{val.name}", action="store_false", default=val.default)
+            else:
+                parser.add_argument(f"--{val.name}", action="store_true", default=val.default)
+    tar_dinstance = tar_dclass()
+    args = parser.parse_args()
+    for key, val in src_dict.items():
+        tar_dinstance.__dict__[key] = args.__dict__[key]
+    return tar_dinstance

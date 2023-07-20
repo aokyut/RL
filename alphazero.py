@@ -281,7 +281,7 @@ def selfplay(network:PVNet, num_sim: int, env, dirichlet_alpha=0.35, prob_act_th
     return data
 
 # rayを使用する際
-selfplay_para = ray.remote(num_cpu=1)(selfplay)
+selfplay_para = ray.remote(num_cpus=1)(selfplay)
 
 
 def play(agent1, agent2, env):
