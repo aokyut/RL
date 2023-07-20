@@ -128,7 +128,7 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--save_dir", default="checkpoint", type=str)
     parser.add_argument("--load", action="store_true", default=False)
-    parser.add_argument("--load_path", str, default="hoge")
+    parser.add_argument("--load_path", type=str, default="hoge")
     parser.add_argument("--buffer_size", default=40000, type=int)
     parser.add_argument("--epoch", default=10, type=int)
     parser.add_argument("--episode", default=200, type=int)
@@ -139,8 +139,8 @@ if __name__ == "__main__":
     config.epoch = args.epoch
     config.episode = args.episode
 
-    if config.load:
-        path = load_path
+    if args.load:
+        path = args.load_path
         assert os.path.exists(path)
         pv.load_state_dict(torch.load(path))
             

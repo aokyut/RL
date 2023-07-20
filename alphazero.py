@@ -31,6 +31,8 @@ class AlphaZeroConfig:
     selfplay_para_n: int = 1 #selfplayの同時進行数
     epoch: int = 10 # 学習の際にバッファー何回分の学習を回すかの設定
     save_dir: str = "checkpoint"
+    eval_best_n: int = 20 # bestモデルを評価する際に対戦する回数
+    change_best_r: float = 0.55 # bestモデルを交代する際の閾値
 
 
 class PVMCTS:
@@ -278,6 +280,50 @@ def selfplay(network:PVNet, num_sim: int, env, dirichlet_alpha=0.35, prob_act_th
     
     return data
 
+def play(agent1, agent2, env):
+    state = env.init()
+    agents = [agent1, agent2]
+    player = 0
+    while True:
+        agent = agents[player]
+        action = agent.get_action_eval(state, None, None)
+        next_state = env.get_next(state, action, player)
+        state = next_state
+        if env.is_done(next_state, player):
+            if env.is_win(next_state, player):
+                if player == 0:
+                    return 1
+                else:
+                    return -1
+            else:
+                return 0
+        player = 1 - player
+
+def eval_model_agents(model1, model2, env, n, alpha, num_sims):
+    win_1 = 0
+    draw = 0
+    win_2 = 0
+    for i in range(n // 2):
+        agent1 = PVMCTS(model1, alpha, env, num_sims=num_sims)
+        agent2 = PVMCTS(model2, alpha, env, num_sims=num_sims)
+        result = play(agent1, agent2, env)
+        if result == 1:
+            win_1 += 1
+        elif result == -1:
+            win_2 += 1
+        else:
+            draw += 1
+        agent1 = PVMCTS(model1, alpha, env, num_sims=num_sims)
+        agent2 = PVMCTS(model2, alpha, env, num_sims=num_sims)
+        result = play(agent2, agent1, env)
+        if result == 1:
+            win_2 += 1
+        elif result == -1:
+            win_1 += 1
+        else:
+            draw += 1
+    return (win_1 + draw / 2) / n, (win_2 + draw / 2) / n
+        
 
 class AlphaZero:
     def __init__(self, pv: PVNet, config: AlphaZeroConfig, env, eval_func):
@@ -303,6 +349,12 @@ class AlphaZero:
         self.epoch = config.epoch
         self.save_dir = config.save_dir
 
+        self.eval_best_n = config.eval_best_n
+        self.change_best_r = config.change_best_r
+        self.best_model = self.pv.clone()
+        hard_update(self.best_model, self.pv)
+        self.best_gen = 0
+
     def train(self):
         # rayを使用する時
         if self.use_ray:
@@ -322,9 +374,21 @@ class AlphaZero:
         train_loop_n = self.episode
         for i in tqdm(range(train_loop_n), desc="[train loop]", smoothing=0.999):
             self.pv.eval()
+            if i != 0:
+                win_rate_best, win_rate_new = eval_model_agents(self.best_model, self.pv, self.env, self.eval_best_n, self.alpha, self.num_sims)
+                self.writer.add_scalar("eval/win_rate_new", win_rate_new, i * self.selfplay_n)
+                if win_rate_new >= self.change_best_r:
+                    print(f"change best model:{self.best_gen} -> {i}")
+                    self.best_gen = i
+                    hard_update(self.best_model, self.pv)
+                else:
+                    hard_update(self.pv, self.best_model)
+                self.writer.add_scalar("eval/best_model_gen", self.best_gen, i * self.selfplay_n)
+
             result = self.eval_func(
                PVMCTS(self.pv, alpha=0.35, env=self.env, epsilon=0, num_sims=self.num_sims)
             )
+            print(result)
             for key, val in result.items():
                 self.writer.add_scalar(key, val, i * self.selfplay_n)
 
