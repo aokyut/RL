@@ -186,7 +186,7 @@ class PVMCTS:
 
         s = self.state_to_str(state, current_player)
 
-        if self.is_done(state, current_player):
+        if self.is_done(state, 1 - current_player):
             #: この盤面でゲーム終了の場合は実報酬を返す
             #: win: 1, lose: -1, draw: 0
             reward_first, reward_second = self.result(state)
@@ -303,7 +303,7 @@ def eval_model_agents(model1, model2, env, n, alpha, num_sims):
     win_1 = 0
     draw = 0
     win_2 = 0
-    for i in range(n // 2):
+    for i in tqdm(range(n // 2), leave=False, desc="[change model check]"):
         agent1 = PVMCTS(model1, alpha, env, num_sims=num_sims)
         agent2 = PVMCTS(model2, alpha, env, num_sims=num_sims)
         result = play(agent1, agent2, env)
@@ -374,16 +374,6 @@ class AlphaZero:
         train_loop_n = self.episode
         for i in tqdm(range(train_loop_n), desc="[train loop]", smoothing=0.999):
             self.pv.eval()
-            if i != 0:
-                win_rate_best, win_rate_new = eval_model_agents(self.best_model, self.pv, self.env, self.eval_best_n, self.alpha, self.num_sims)
-                self.writer.add_scalar("eval/win_rate_new", win_rate_new, i * self.selfplay_n)
-                if win_rate_new >= self.change_best_r:
-                    print(f"change best model:{self.best_gen} -> {i}")
-                    self.best_gen = i
-                    hard_update(self.best_model, self.pv)
-                else:
-                    hard_update(self.pv, self.best_model)
-                self.writer.add_scalar("eval/best_model_gen", self.best_gen, i * self.selfplay_n)
 
             result = self.eval_func(
                PVMCTS(self.pv, alpha=0.35, env=self.env, epsilon=0, num_sims=self.num_sims)
@@ -421,6 +411,18 @@ class AlphaZero:
             for i in bar:
                 result = self.optimize()
                 bar.set_postfix(result)
+
+            self.pv.eval()
+
+            win_rate_best, win_rate_new = eval_model_agents(self.best_model, self.pv, self.env, self.eval_best_n, self.alpha, self.num_sims)
+            self.writer.add_scalar("eval/win_rate_new", win_rate_new, i * self.selfplay_n)
+            if win_rate_new >= self.change_best_r:
+                print(f"change best model:{self.best_gen} -> {i}")
+                self.best_gen = i
+                hard_update(self.best_model, self.pv)
+            else:
+                hard_update(self.pv, self.best_model)
+            self.writer.add_scalar("eval/best_model_gen", self.best_gen, i * self.selfplay_n)
         
             _save_model(self.save_dir, self.log_name, "latest", self.pv)
 

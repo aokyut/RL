@@ -34,6 +34,7 @@ def save_model(step, model, name):
 def _save_model(save_dir, save_name, model_name, model):
     model_dir = path.join(save_dir, save_name)
     model_path = path.join(model_dir, f"{model_name}.pth")
+    print(f"save at {model_path}")
     if not path.exists(model_dir):
         os.makedirs(model_dir)
     torch.save(model.state_dict(), model_path)
