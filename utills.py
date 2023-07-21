@@ -140,7 +140,7 @@ class ConfigParser:
             json.dump(self.setting_file, f, indent=2)
 
 def parse_from_dataclass(tar_dclass):
-    src_dict = tar_class.__dataclass_fields__
+    src_dict = tar_dclass.__dataclass_fields__
     parser = ArgumentParser()
     for key, val in src_dict.items():
         if val.type != bool:

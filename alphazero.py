@@ -33,6 +33,8 @@ class AlphaZeroConfig:
     save_dir: str = "checkpoint"
     eval_best_n: int = 20 # bestモデルを評価する際に対戦する回数
     change_best_r: float = 0.55 # bestモデルを交代する際の閾値
+    load: bool = False
+    load_path: str = "hoge"
 
 
 class PVMCTS:
