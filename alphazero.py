@@ -9,11 +9,17 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 import numpy as np
 import math
-from tqdm import tqdm
+from utills import is_colab
 from typing import Dict, Any, List
 import random
 import ray
 from envs.base import play, ModelAgent
+
+if is_colab():
+    from tqdm.notebook import tqdm
+else:
+    from tqdm import tqdm
+
 
 @dataclass
 class AlphaZeroConfig:

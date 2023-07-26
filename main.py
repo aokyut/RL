@@ -3,12 +3,18 @@ from alphazero import AlphaZero, AlphaZeroConfig
 from envs.qubic import Qubic, show
 from envs.base import get_eval_func
 from PyBGEnv import qubic
-from tqdm import tqdm
+from utills import parse_from_dataclass, is_colab
+
 import random
 from argparse import ArgumentParser
 import os
 import torch
-from utills import parse_from_dataclass
+
+
+if is_colab():
+    from tqdm.notebook import tqdm
+else:
+    from tqdm import tqdm
 
 input_net = ResNet(
     in_ch=8, out_ch=32, 

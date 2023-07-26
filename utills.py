@@ -6,6 +6,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 from argparse import ArgumentParser
 
+def is_colab():
+    import sys
+    module_list = sys.modules
+    return "google.colab" in module_list
+    
+
 def categorical_sigmoid_policy(value, action_mask):
     return F.sigmoid(value) * action_mask
 
