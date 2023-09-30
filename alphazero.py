@@ -5,8 +5,11 @@ from memory import ReplayMemory
 from os.path import join
 import torch
 import torch.optim as optim
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
+from torch.quantization import per_channel_dynamic_qconfig
+
 import numpy as np
 import math
 from utills import is_colab
@@ -19,6 +22,8 @@ if is_colab():
     from tqdm.notebook import tqdm
 else:
     from tqdm import tqdm
+
+torch.backends.quantized.engine = 'qnnpack'
 
 
 @dataclass
@@ -41,6 +46,7 @@ class AlphaZeroConfig:
     change_best_r: float = 0.55 # bestモデルを交代する際の閾値
     load: bool = False
     load_path: str = "hoge"
+    quantize: bool = True
 
 
 class PVMCTS:
@@ -366,6 +372,7 @@ class AlphaZero:
         self.best_model = self.pv.clone()
         hard_update(self.best_model, self.pv)
         self.best_gen = 0
+        self.quantize = config.quantize
 
     def train(self):
         # rayを使用する時
@@ -384,11 +391,16 @@ class AlphaZero:
 
         self.step = 0
         train_loop_n = self.episode
-        for i in tqdm(range(train_loop_n), desc="[train loop]", smoothing=0.999):
+        for i in tqdm(range(train_loop_n), desc="[train loop]", smoothing=0):
             self.pv.eval()
+            if self.quantize:
+                ts_model = torch.jit.script(self.pv)
+                pv = torch.quantization.quantize_dynamic_jit(ts_model, {'': per_channel_dynamic_qconfig})
+            else:
+                pv = self.pv
 
             result = self.eval_func(
-               PVMCTS(self.pv, alpha=0.35, env=self.env, epsilon=0, num_sims=self.num_sims)
+               PVMCTS(pv, alpha=0.35, env=self.env, epsilon=0, num_sims=self.num_sims)
             )
             print(result)
             for key, val in result.items():
@@ -396,9 +408,9 @@ class AlphaZero:
 
             # self.memory = ReplayMemory(self.buffer_size, self.batch_size)
             if not self.use_ray:
-                mcts = PVMCTS(self.pv, self.alpha, self.env, num_sims=self.num_sims)
+                mcts = PVMCTS(pv, self.alpha, self.env, num_sims=self.num_sims)
 
-            bar = tqdm(total=self.selfplay_n, desc="[selfplay]", leave=False, smoothing=0.99)
+            bar = tqdm(total=self.selfplay_n, desc="[selfplay]", leave=False, smoothing=0)
             for _ in  range(self.selfplay_n):
                 if self.use_ray:
                     finished, work_in_progresses = ray.wait(work_in_progresses, num_returns=1)
@@ -411,7 +423,7 @@ class AlphaZero:
                             dirichlet_alpha=self.alpha, 
                             prob_act_th=self.prob_act_th)])
                 else:
-                    data = selfplay(self.pv, self.num_sims, self.env, self.alpha, self.prob_act_th)
+                    data = selfplay(pv, self.num_sims, self.env, self.alpha, self.prob_act_th)
                 self.memory.push_sequence(data)
                 bar.update(1)
             bar.close()
@@ -435,7 +447,8 @@ class AlphaZero:
             # else:
             #     hard_update(self.pv, self.best_model)
             # self.writer.add_scalar("eval/best_model_gen", self.best_gen, i * self.selfplay_n)
-        
+            if i * self.selfplay_n % self.save_n == 0:
+                _save_model(self.save_dir, self.log_name, i * self.selfplay_n, self.pv)
             _save_model(self.save_dir, self.log_name, "latest", self.pv)
 
 
@@ -467,9 +480,6 @@ class AlphaZero:
             self.writer.add_scalar("loss/value_loss", torch.mean(value_loss).item(), self.step)
             self.writer.add_scalar("loss/policy_loss", torch.mean(policy_loss).item(), self.step)
             self.writer.add_scalar("loss/sum_loss", loss.item(), self.step)
-
-        if self.step % self.save_n == 0:
-            _save_model(self.save_dir, self.log_name, self.step, self.pv)
         
         return {
             "v_loss": "{:7.3f}".format(torch.sum(value_loss).item()),
