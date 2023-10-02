@@ -6,6 +6,9 @@ from base.model import Network
 from torch.distributions import Categorical
 from typing import List
 
+import numpy as np
+import math
+
 
 class Block:
     pass
@@ -210,17 +213,17 @@ class PVNet(nn.Module):
         input_layer: nn.Module,
         policy_layer: nn.Module,
         value_layer: nn.Module, 
-        in_shape: List[int]):
+        transform = lambda x: x):
         assert issubclass(type(policy_layer), Policy) and type(policy_layer) != Policy
         assert issubclass(type(value_layer), Value) and type(value_layer) != Value
         super().__init__()
         self.input_layer = input_layer
         self.policy = policy_layer
         self.value = value_layer
-        self.in_shape = in_shape
+        self.transform = transform
 
     def forward(self, state):
-        state = state.reshape(self.in_shape)
+        state = self.transform(state)
         x = self.input_layer(state)
         prob = self.policy(x)
         value = self.value(x)
@@ -231,7 +234,7 @@ class PVNet(nn.Module):
             self.input_layer.clone(),
             self.policy.clone(),
             self.value.clone(),
-            self.in_shape)
+            self.transform)
 
 
 class Policy2d(nn.Module, Policy):
@@ -253,6 +256,23 @@ class Policy2d(nn.Module, Policy):
     def clone(self):
         return Policy2d(self.in_ch, self.out_ch, self.in_fc, self.out_fc)
 
+class Policy1d(nn.Module, Policy):
+    def __init__(self, in_feature, out_feature, in_fc, out_fc):
+        super().__init__()
+        self.in_feature=in_feature
+        self.out_feature=out_feature
+        self.in_fc = in_fc
+        self.out_fc = out_fc
+        self.linear = nn.Linear(in_feature, out_feature)
+        self.out = nn.Linear(in_fc, out_fc)
+    def forward(self, x):
+        x = F.silu(self.linear(x))
+        x = x.reshape(-1, self.in_fc)
+        x = self.out(x)
+        return F.softmax(x, dim=-1)
+    def clone(self):
+        return Policy1d(self.in_feature, self.out_feature, self.in_fc, self.out_fc)
+
 class Value2d(nn.Module, Value):
     def __init__(self, in_ch, out_ch, in_fc):
         super().__init__()
@@ -271,3 +291,180 @@ class Value2d(nn.Module, Value):
     def clone(self):
         return Value2d(self.in_ch, self.out_ch, self.in_fc)
 
+class Value1d(nn.Module, Value):
+    def __init__(self, in_f, out_f, in_fc):
+        super().__init__()
+        self.in_f = in_f
+        self.out_f = out_f
+        self.in_fc = in_fc
+        self.l = nn.Linear(in_f, out_f)
+        self.out = nn.Linear(in_fc, 1)
+
+    def forward(self, x):
+        x = F.silu(self.l(x))
+        x = x.reshape(-1, self.in_fc)
+        x = self.out(x)
+        return x
+    
+    def clone(self):
+        return Value2d(self.in_f, self.out_f, self.in_fc)
+
+class Attention(nn.Module):
+    def __init__(self, depth, q_length, m_length):
+        super().__init__()
+        self.q_dense = nn.Linear(depth, depth)
+        self.k_dense = nn.Linear(depth, depth)
+        self.v_dense = nn.Linear(depth, depth)
+
+        self.out_dense = nn.Linear(depth, depth)
+        self.scale = 1 / depth ** 0.5
+    
+    def forward(self, inp, memory):
+        """
+        query: [b, query_size, depth]
+        key: [b, m_size, depth]
+        value: [b, m_size, depth]
+        """
+        query = self.q_dense(inp) / self.scale
+        key = self.k_dense(memory)
+        value = self.v_dense(memory)
+
+        logit = torch.matmul(query, torch.transpose(key, dim0=-1, dim1=-2))
+        attention_weight = torch.softmax(logit, dim=-1)
+        print("weight", attention_weight.shape)
+        out = self.out_dense(torch.matmul(attention_weight, value))
+        return out
+
+class MultiheadSelfAttention(nn.Module, Block):
+    def __init__(self, 
+        hidden_size:int, 
+        head: int, 
+        dropout_rate: float,
+        length: int
+    ):
+        super().__init__()
+        assert hidden_size % head == 0, ("hidden_size must be divisible by head")
+
+        self.scale = (hidden_size // head) ** -0.5
+
+        self.hidden_size = hidden_size
+        self.head = head
+        self.length = length
+        self.dropout_rate = dropout_rate
+        self.q_dense = nn.Linear(hidden_size, hidden_size)
+        self.k_dense = nn.Linear(hidden_size, hidden_size)
+        self.v_dense = nn.Linear(hidden_size, hidden_size)
+        self.out_dense = nn.Linear(hidden_size, hidden_size)
+
+        self.attention_dropout = nn.Dropout(p = dropout_rate)
+
+        self.norm = nn.LayerNorm([length, hidden_size])
+    
+    def forward(self, x):
+        q = self.q_dense(x)
+        k = self.k_dense(x)
+        v = self.v_dense(x)
+        
+        q = self._split(q)
+        k = self._split(k)
+        v = self._split(v)
+
+        q *= self.scale
+
+        logit = torch.matmul(q, torch.transpose(k, dim0=-1, dim1=-2))
+
+        attention_weight = torch.softmax(logit, dim=-1)
+        attention_weight = self.attention_dropout(attention_weight)
+
+        attention_out = torch.matmul(attention_weight, v)
+        attention_out = self._join(attention_out)
+        return self.norm(x + F.silu(self.out_dense(attention_out)))
+
+    
+    def _split(self, x):
+        batch_size, length, hidden_size = x.shape
+        x = x.reshape(batch_size, length, self.head, hidden_size // self.head)
+        return torch.transpose(x, dim0=2, dim1=1)
+    
+    def _join(self, x):
+        batch_size, head, length, devide_h_size = x.shape
+        x = torch.transpose(x, dim0=2, dim1=1)
+        return x.reshape(batch_size, length, head * devide_h_size)
+    
+    def clone(self):
+        return MultiheadSelfAttention(self.hidden_size, self.head, self.dropout_rate, self.length)
+
+
+
+def get_positional_encoding(max_size: int, d_model: int):
+    """
+    size: 
+        PE(pos, 2i) = sin(pos / 1000 ** (2i / d_model))
+        PE(pos, 2i + 1) = cos(pos / 1000 ** (2i / d_model))
+    out: 
+        (input_size, hidden_size)
+    """
+    
+    mat = np.array(
+        [
+            [
+                (d % 2) * math.sin(pos / 1000 ** (2 * d / d_model))
+                + ((d + 1) % 2) * math.cos(pos / 1000 ** (2 * d / d_model))
+                for d in range(d_model)
+            ]
+            for pos in range(max_size)
+        ]
+    )
+    return torch.FloatTensor(mat)
+
+class FeedForwardBlock(nn.Module, Block):
+    def __init__(self, h_ch, shape):
+        super().__init__()
+        self.linear1 = nn.Linear(h_ch, h_ch)
+        self.linear2 = nn.Linear(h_ch, h_ch)
+        self.norm = nn.LayerNorm(shape)
+        self.h_ch = h_ch
+        self.shape = shape
+    def forward(self, input_x):
+        x = self.linear1(input_x)
+        x = F.silu(x)
+        x = self.linear2(x)
+        return self.norm(input_x + x)
+    def clone(self):
+        return FeedForwardBlock(self.h_ch, self.shape)
+
+class SelfAttentionNet(nn.Module, Block):
+    def __init__(self, length: int, hidden_size: int, layers: List[nn.Module], in_ch: int, out_ch: int):
+        super().__init__()
+        self.positional_encoding = get_positional_encoding(length, hidden_size)
+        self.in_ch = in_ch
+        self.out_ch = out_ch
+        self.hidden_size = hidden_size
+        self.length = length
+        self.layers = layers
+
+        self.attention_layers = nn.Sequential()
+
+        self.input_linear = nn.Linear(in_ch, hidden_size)
+
+        for i, layer in enumerate(layers):
+            assert issubclass(type(layer), Block) and type(layer) != Block, f"layer: {str(type(layer))}"
+            self.attention_layers.add_module(
+                f"{(type(layer)).__name__}-{i}", layer.clone()
+            )
+        
+        self.attention_layers.add_module(
+            "linear-output", nn.Linear(hidden_size, out_ch)
+        )
+        self.attention_layers.add_module(
+            "silu-output", nn.SiLU()
+        )
+
+    def forward(self, x):
+        x = F.silu(self.input_linear(x))
+        x = x + self.positional_encoding
+        return self.attention_layers(x)
+    def clone(self):
+        return SelfAttentionNet(
+            self.length, self.hidden_size, self.layers, self.in_ch, self.out_ch
+        )

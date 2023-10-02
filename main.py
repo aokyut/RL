@@ -34,7 +34,10 @@ value_net = Value2d(
     in_fc=128
 )
 
-pv = PVNet(input_layer=input_net, policy_layer=policy_net, value_layer=value_net, in_shape=[-1, 8, 4, 4])
+def transform(state):
+    return state.reshape([-1, 8, 4, 4])
+
+pv = PVNet(input_layer=input_net, policy_layer=policy_net, value_layer=value_net, transform=transform)
 
 env = qubic
 # eval_func = get_eval_func(env, [RandomAgent(), MiniMaxAgent(1)], 20)
@@ -55,11 +58,11 @@ def play(agent1, agent2):
         res = env.is_win(next_state, player)
         if res:
             if player == 0:
-                return 1
+                return 1, t
             else:
-                return -1
+                return -1, t
         if env.is_draw(next_state):
-            return 0
+            return 0, t
         player = 1 - player
 
 class RandomAgent:
@@ -100,14 +103,15 @@ def eval_func(model):
         draw_black = 0
         draw_white = 0
         score = 0
-        for i in tqdm(range(eval_n // 2), leave=False, desc=f"[{agent.name}-black]"):
-            result = play(tar_agent, agent)
+        t = 0
+        for i in tqdm(range(eval_n // 2), leave=False, desc=f"[{agent.name}-black]", postfix=f"step:{t}"):
+            result, t = play(tar_agent, agent)
             if result == 1:
                 win_black += 1
             elif result == 0:
                 draw_black += 1
-        for i in tqdm(range(eval_n // 2), leave=False, desc=f"[{agent.name}-white]"):
-            result = play(agent, tar_agent)
+        for i in tqdm(range(eval_n // 2), leave=False, desc=f"[{agent.name}-white]", postfix=f"step:{t}"):
+            result, t = play(agent, tar_agent)
             if result == -1:
                 win_white += 1
             elif result == 0:

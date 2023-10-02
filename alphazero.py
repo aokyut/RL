@@ -369,9 +369,9 @@ class AlphaZero:
 
         self.eval_best_n = config.eval_best_n
         self.change_best_r = config.change_best_r
-        self.best_model = self.pv.clone()
-        hard_update(self.best_model, self.pv)
-        self.best_gen = 0
+        # self.best_model = self.pv.clone()
+        # hard_update(self.best_model, self.pv)
+        # self.best_gen = 0
         self.quantize = config.quantize
 
     def train(self):
