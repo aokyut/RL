@@ -85,11 +85,13 @@ class ModelAgent:
         return self.model.get_action_eval(state, action_mask, False)
 
 def eval_func(model):
-    eval_n = 20
+    eval_n = 10
     tar_agent = ModelAgent(model)
     agents = [
-        RandomAgent(),
+        # RandomAgent(),
+        MiniMaxAgent(0),
         MiniMaxAgent(1),
+        MiniMaxAgent(2)
     ]
     record = {}
     for agent in agents:
@@ -121,14 +123,16 @@ def eval_func(model):
 
 config = AlphaZeroConfig(
     buffer_size=40000,
-    log_name="alphazero_qubic",
+    log_name="alphazero_connect4",
     prob_action_th=4,
-    selfplay_n=200,
-    episode=200,
+    selfplay_n=300,
+    episode=1000,
     batch_size=128,
     epoch=10,
     sim_n=50,
-    save_dir="checkpoint"
+    save_dir="checkpoint",
+    load=False,
+    load_path="checkpoint/alphazero/latest.pth"
 )
 
 if __name__ == "__main__":
@@ -148,7 +152,7 @@ if __name__ == "__main__":
     # config.episode = args.episode
     # config.use_ray = args.use_ray
 
-    config = parse_from_dataclass(AlphaZeroConfig)
+    # config = parse_from_dataclass(AlphaZeroConfig)
 
     if config.load:
         path = config.load_path
