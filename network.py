@@ -159,17 +159,21 @@ class BottleNeckBlock(nn.Module, Block):
         self.layers = nn.Sequential(
             nn.Conv2d(channel, channel // 4, kernel_size=1),
             nn.BatchNorm2d(channel // 4),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Conv2d(channel // 4, channel // 4, kernel_size=3, padding=1),
             nn.BatchNorm2d(channel // 4),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.Conv2d(channel // 4, channel, kernel_size=1),
             nn.BatchNorm2d(channel),
         )
+        self.channel = channel
     
     def forward(self, x):
         x = x + self.layers(x)
-        return F.relu(x)
+        return F.silu(x)
+    
+    def clone(self):
+        return BottleNeckBlock(self.channel)
 
 
 class ResNet(nn.Module):
@@ -186,7 +190,7 @@ class ResNet(nn.Module):
             "conv2d-input", nn.Conv2d(in_ch, hidden_ch, kernel_size=1)
         )
         self.resblocks.add_module(
-            "relu-input", nn.ReLU()
+            "silu-input", nn.SiLU()
         )
         for i in range(1, 1 + block_n):
             self.resblocks.add_module(
@@ -196,7 +200,7 @@ class ResNet(nn.Module):
             "conv2d-output", nn.Conv2d(hidden_ch, out_ch, kernel_size=1)
         )
         self.resblocks.add_module(
-            "relu-output", nn.ReLU()
+            "silu-output", nn.SiLU()
         )
 
     def forward(self, x):
@@ -248,7 +252,7 @@ class Policy2d(nn.Module, Policy):
         self.fc1 = nn.Linear(in_fc, out_fc)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
+        x = F.silu(self.conv1(x))
         x = x.reshape(-1, self.in_fc)
         x = self.fc1(x)
         return F.softmax(x, dim=-1)
@@ -283,10 +287,11 @@ class Value2d(nn.Module, Value):
         self.fc1 = nn.Linear(in_fc, 1)
     
     def forward(self, x):
-        x = F.relu(self.conv1(x))
+        x = F.silu(self.conv1(x))
         x = x.reshape(-1, self.in_fc)
         x = self.fc1(x)
-        return torch.tanh(x)
+        return x
+        # return torch.tanh(x)
     
     def clone(self):
         return Value2d(self.in_ch, self.out_ch, self.in_fc)
@@ -379,6 +384,7 @@ class MultiheadSelfAttention(nn.Module, Block):
         attention_out = torch.matmul(attention_weight, v)
         attention_out = self._join(attention_out)
         return self.norm(x + F.silu(self.out_dense(attention_out)))
+        # return x + F.silu(self.out_dense(attention_out))
 
     
     def _split(self, x):
@@ -430,6 +436,7 @@ class FeedForwardBlock(nn.Module, Block):
         x = F.silu(x)
         x = self.linear2(x)
         return self.norm(input_x + x)
+        # return input_x + x
     def clone(self):
         return FeedForwardBlock(self.h_ch, self.shape)
 
@@ -457,7 +464,7 @@ class SelfAttentionNet(nn.Module, Block):
             "linear-output", nn.Linear(hidden_size, out_ch)
         )
         self.attention_layers.add_module(
-            "silu-output", nn.SiLU()
+            "silu-output", nn.ReLU()
         )
 
     def forward(self, x):

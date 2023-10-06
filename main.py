@@ -9,6 +9,7 @@ import random
 from argparse import ArgumentParser
 import os
 import torch
+import warnings
 
 
 if is_colab():
@@ -16,28 +17,36 @@ if is_colab():
 else:
     from tqdm import tqdm
 
-input_net = ResNet(
+# warnings.filterwarnings("ignore")
+
+def res_pv():
+    input_net = ResNet(
     in_ch=8, out_ch=32, 
-    hidden_ch=128, block_n=4, block_type=BottleNeckBlock,
-)
+    hidden_ch=128, block_n=10, block_type=BottleNeckBlock,
+    )
 
-policy_net = Policy2d(
-    in_ch=32,
-    out_ch=8,
-    in_fc=128,
-    out_fc=16
-)
+    policy_net = Policy2d(
+        in_ch=32,
+        out_ch=8,
+        in_fc=128,
+        out_fc=16
+    )
 
-value_net = Value2d(
-    in_ch=32,
-    out_ch=8,
-    in_fc=128
-)
+    value_net = Value2d(
+        in_ch=32,
+        out_ch=8,
+        in_fc=128
+    )
+
+    def res_transform(state):
+        return state.reshape([-1, 8, 4, 4])
+
+    return PVNet(input_layer=input_net, policy_layer=policy_net, value_layer=value_net, transform=res_transform)
 
 def transform(state):
     return state.reshape([-1, 8, 4, 4])
 
-pv = PVNet(input_layer=input_net, policy_layer=policy_net, value_layer=value_net, transform=transform)
+pv = res_pv()
 
 env = qubic
 # eval_func = get_eval_func(env, [RandomAgent(), MiniMaxAgent(1)], 20)
@@ -127,16 +136,16 @@ def eval_func(model):
 
 config = AlphaZeroConfig(
     buffer_size=40000,
-    log_name="alphazero_connect4",
+    log_name="alphazero_qubic10_2",
     prob_action_th=4,
-    selfplay_n=300,
+    selfplay_n=100,
     episode=1000,
-    batch_size=128,
-    epoch=10,
+    batch_size=32,
+    epoch=5,
     sim_n=50,
     save_dir="checkpoint",
     load=False,
-    load_path="checkpoint/alphazero/latest.pth"
+    load_path="checkpoint/alphazero_qubic10/latest.pth"
 )
 
 if __name__ == "__main__":
@@ -161,6 +170,7 @@ if __name__ == "__main__":
     if config.load:
         path = config.load_path
         assert os.path.exists(path)
+        print(f"load from {path}")
         pv.load_state_dict(torch.load(path))
             
 
