@@ -165,7 +165,7 @@ if __name__ == "__main__":
     # config.episode = args.episode
     # config.use_ray = args.use_ray
 
-    # config = parse_from_dataclass(AlphaZeroConfig)
+    config = parse_from_dataclass(AlphaZeroConfig)
 
     if config.load:
         path = config.load_path
