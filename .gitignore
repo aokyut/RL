@@ -1,6 +1,7 @@
-*/tensorboard/
+*/tensorboard/*
 */checkpoints/
 *test*
+events.out.tfevents.*
 */__pycache__
 __pycache__
 tensorboard/*
@@ -8,3 +9,4 @@ models/*
 gomoku
 gomoku_env
 *.pth
+*.pt
