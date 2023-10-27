@@ -1,11 +1,12 @@
 import gym
 from networks import GaussianPolicy
-from utils import Transition, SacConfig
+from utils import Transition, SacConfig, parse_from_dataclass
 from typing import List
 import numpy as np
 from agent import SACAgent
 import torch
 from tqdm import tqdm
+import sys
 
 
 # env = gym.make("BipedalWalker-v3")
@@ -26,7 +27,7 @@ def explore_func(model:GaussianPolicy, use_model=True) -> List[Transition]:
     seq = []
     agent = ModelAgent(model)
     state, _ = env.reset()
-    bar = tqdm(leave=False)
+    bar = tqdm(leave=False, file=sys.stdout)
     step = 0
     while True:
         bar.update(1)
@@ -59,7 +60,7 @@ def eval_func(model:GaussianPolicy):
     acum_reward = 0
     eval_n = 10
     agent = ModelAgent(model)
-    for i in tqdm(range(eval_n), leave=False):
+    for i in tqdm(range(eval_n), leave=False, file=sys.stdout):
         state, _ = env.reset()
         step = 0
         while True:
@@ -89,12 +90,15 @@ config = SacConfig(
     n_block=3,
     update_per_episode=20,
     start_alpha=0.2,
-    iter_n=1_000
+    iter_n=1_000,
+    log_name="sac-hurber"
     # save_n=5,
     # log_n=10
 )
 
 if __name__ == "__main__":
+    config = parse_from_dataclass(SacConfig, config)
+    print(config)
     learn_agent = SACAgent(config, eval_func, explore_func)
     learn_agent.policy.eval()
     # explore_func(learn_agent.policy)

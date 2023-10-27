@@ -4,6 +4,7 @@ from typing import List
 from tqdm import tqdm
 from collections import OrderedDict
 import os
+import sys
 import math
 
 import torch
@@ -62,7 +63,7 @@ class SACAgent:
         self.config = config
     
     def train(self):
-        bar = tqdm(total=self.config.buffer_size, desc="[warm up]")
+        bar = tqdm(total=self.config.buffer_size, desc="[warm up]", file=sys.stdout)
         memory = ReplayBuffer(self.config)
         while True:
             data = self.explore_func(self.policy, False)
@@ -71,7 +72,7 @@ class SACAgent:
             if is_full:
                 break
         
-        bar = tqdm(range(self.step, self.iter_n), smoothing=0.01, desc="[Train]")
+        bar = tqdm(range(self.step, self.iter_n), smoothing=0.01, desc="[Train]", file=sys.stdout)
         for i in bar:
             self.policy.eval()
             
@@ -79,7 +80,7 @@ class SACAgent:
             memory.push(data)
             self.policy.train()
 
-            bar2 = tqdm(range(self.optimize_n), smoothing=1, desc="[Optimize]", leave=False)
+            bar2 = tqdm(range(self.optimize_n), smoothing=1, desc="[Optimize]", leave=False, file=sys.stdout)
 
             for j in bar2:
                 result = self.optimize(memory.get_batch())
@@ -132,10 +133,10 @@ class SACAgent:
             next_q_tar = rewards + self.gamma * (1 - dones) * (next_q - alpha * next_logprobs)
         
         q1, q2 = self.qnet(states, actions)
-        # q1_error = huber_error(next_q_tar - q1)
-        # q2_error = huber_error(next_q_tar - q2)
-        q2_error = F.mse_loss(q2, next_q_tar)
-        q1_error = F.mse_loss(q1, next_q_tar)
+        q1_error = huber_error(next_q_tar - q1)
+        q2_error = huber_error(next_q_tar - q2)
+        # q2_error = F.mse_loss(q2, next_q_tar)
+        # q1_error = F.mse_loss(q1, next_q_tar)
         loss_q = torch.mean(0.5 * q1_error + 0.5 * q2_error)
 
         self.optim_q.zero_grad()

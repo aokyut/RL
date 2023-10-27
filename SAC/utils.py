@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import random
 import json
+from argparse import ArgumentParser
 
 
 
@@ -139,3 +140,22 @@ class ReplayBuffer:
         return Transition(
             states, actions, rewards, next_states, dones
         )
+
+
+def parse_from_dataclass(tar_dclass, default):
+    src_dict = tar_dclass.__dataclass_fields__
+    parser = ArgumentParser()
+    for key, val in src_dict.items():
+        default_val = default.__dict__[val.name]
+        if val.type != bool:
+            parser.add_argument(f"--{val.name}", type=val.type, default=default_val)
+        else:
+            if val.default:
+                parser.add_argument(f"--{val.name}", action="store_false", default=default_val)
+            else:
+                parser.add_argument(f"--{val.name}", action="store_true", default=default_val)
+    tar_dinstance = default
+    args = parser.parse_args()
+    for key, val in src_dict.items():
+        tar_dinstance.__dict__[key] = args.__dict__[key]
+    return tar_dinstance
