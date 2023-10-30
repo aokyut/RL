@@ -92,11 +92,11 @@ class LinearResBlock(nn.Module):
     
 
 class GaussianPolicy(nn.Module):
-    def __init__(self, state_shape, hidden_size, n_blocks, action_size):
+    def __init__(self, state_shape, hidden_size, n_blocks, action_size, action_bias, action_scale):
         super().__init__()
         self.state_size = 1
-        self.action_bias = 0
-        self.action_scale = 2
+        self.action_bias = action_bias
+        self.action_scale = action_scale
         for size in state_shape:
             self.state_size *= size
         self.input_layer = nn.Linear(self.state_size, hidden_size)

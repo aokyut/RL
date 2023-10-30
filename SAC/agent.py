@@ -1,5 +1,5 @@
-from networks import DualQNetwork, GaussianPolicy
-from utils import *
+from .networks import DualQNetwork, GaussianPolicy
+from .utils import *
 from typing import List
 from tqdm import tqdm
 from collections import OrderedDict
@@ -21,9 +21,10 @@ class SACAgent:
         self.explore_func = explore_func
         self.buffer_size = config.buffer_size
         self.batch_size = config.batch_size
-        self.iter_n = config.iter_n
+        self.episode_n = config.episode_n
         self.save_n = config.save_n
         self.log_n = config.log_n
+        self.eval_n = config.eval_n
         self.writer = set_summarywriter(config)
         self.step = config.step
         self.log_name = config.log_name
@@ -31,6 +32,7 @@ class SACAgent:
         self.target_entropy = config.tar_ent
         self.tar_update_n = config.tar_update_n
         self.tar_hard_update_n = config.target_hard_update_n
+        self.update_per_episode = config.update_per_episode
         self.optimize_n = config.update_per_episode
         self.tau = config.tar_update_tau
         self.qnet = DualQNetwork(
@@ -52,7 +54,9 @@ class SACAgent:
             state_shape=config.state_shape,
             hidden_size=config.hidden_size,
             n_blocks=config.n_block,
-            action_size=config.action_size
+            action_size=config.action_size,
+            action_scale=config.action_scale,
+            action_bias=config.action_bias
         )
         self.gamma = config.gamma
         # self.log_alpha = torch.zeros(1, requires_grad=True)
@@ -72,7 +76,7 @@ class SACAgent:
             if is_full:
                 break
         
-        bar = tqdm(range(self.step, self.iter_n), smoothing=0.01, desc="[Train]", file=sys.stdout)
+        bar = tqdm(range(self.step // self.update_per_episode, self.episode_n), smoothing=0.01, desc="[Train]", file=sys.stdout)
         for i in bar:
             self.policy.eval()
             
@@ -96,7 +100,8 @@ class SACAgent:
         save_dir = path.join(self.save_dir, self.log_name)
         if not path.exists(save_dir):
             os.makedirs(save_dir)
-        save_dataclass(path.join(save_dir, "config"), self.config)
+        self.config.step = self.step
+        save_dataclass(path.join(save_dir, "config.json"), self.config)
 
         alpha_path = path.join(save_dir, "alpha.pt")
         torch.save(self.log_alpha, alpha_path)
@@ -175,12 +180,12 @@ class SACAgent:
             self.writer.add_scalar("loss/entropy", entropy, self.step)
             self.writer.add_scalar("loss/alpha", alpha.item(), self.step)
         
-            if self.eval_func is not None:
-                self.policy.eval()
-                result = self.eval_func(self.policy)
-                for key, val in result.items():
-                    self.writer.add_scalar(key, val, self.step)
-                self.policy.train()
+        if self.step % self.eval_n == 0 and self.eval_func is not None:
+            self.policy.eval()
+            result = self.eval_func(self.policy)
+            for key, val in result.items():
+                self.writer.add_scalar(key, val, self.step)
+            self.policy.train()
 
         if self.step % self.save_n == 0:
             self.save()

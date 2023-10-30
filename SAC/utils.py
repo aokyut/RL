@@ -16,12 +16,15 @@ from argparse import ArgumentParser
 class SacConfig:
     state_shape: List[int]
     action_size: int
+    action_bias: float = 0
+    action_scale: float = 1
     buffer_size: int = 2 << 15
     batch_size: int = 64
     log_name: str = "sac"
     log_n: int = 100
+    eval_n: int = 100
     save_n: int = 20000
-    iter_n: int = 100000
+    episode_n: int = 100000
     n_block: int = 3
     hidden_size: int = 16
     load: bool = False

@@ -1,9 +1,9 @@
 import gym
-from networks import GaussianPolicy
-from utils import Transition, SacConfig, parse_from_dataclass
+from .networks import GaussianPolicy
+from .utils import Transition, SacConfig, parse_from_dataclass
 from typing import List
 import numpy as np
-from agent import SACAgent
+from .agent import SACAgent
 import torch
 from tqdm import tqdm
 import sys
@@ -90,8 +90,10 @@ config = SacConfig(
     n_block=3,
     update_per_episode=20,
     start_alpha=0.2,
-    iter_n=1_000,
-    log_name="sac-hurber"
+    episode_n=1_000,
+    log_name="sac-hurber",
+    log_dir="./exp_tensorboard",
+    lr_alpha=0.0001
     # save_n=5,
     # log_n=10
 )
