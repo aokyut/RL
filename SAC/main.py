@@ -18,7 +18,7 @@ class ModelAgent:
         self.model = model
     
     def get_action(self, state):
-        action, _ = self.model(torch.FloatTensor(state))
+        action, _ = self.model.sample_action(torch.FloatTensor(state))
         action = action.to("cpu").detach().numpy().copy().reshape((-1))
         return action
     

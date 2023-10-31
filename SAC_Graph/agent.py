@@ -1,4 +1,4 @@
-from .networks import DualQNetwork, GauusianPolicy
+from .networks import DualQNetwork, GaussianPolicy
 from .utils import *
 from typing import List
 import math
@@ -18,7 +18,7 @@ class GraphSACAgent:
         convert_network_grad_to_false(self.tar_qnet)
         hard_update(self.tar_qnet, self.qnet)
 
-        self.policy = GauusianPolicy(config)
+        self.policy = GaussianPolicy(config)
 
         self.log_alpha = torch.tensor([math.log(config.start_alpha)], requires_grad=True)
         self.optim_alpha = optim.SGD([self.log_alpha], lr=config.lr_alpha)
@@ -111,7 +111,7 @@ class GraphSACAgent:
 
         # policy
         selected_actions, logprobs = self.policy.sample_action(adjs, edges, states)
-        q1, q2 = self.qnet(states, selected_actions)
+        q1, q2 = self.qnet(adjs, edges, states, selected_actions)
         q_min = torch.min(q1, q2)
 
         loss_p = -1 * torch.mean(q_min - alpha * logprobs)
@@ -119,7 +119,6 @@ class GraphSACAgent:
         self.optim_p.zero_grad()
         loss_p.backward()
         self.optim_p.step()
-
         # alpha
         alpha = torch.exp(self.log_alpha)
         with torch.no_grad():
