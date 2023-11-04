@@ -106,6 +106,7 @@ def parse_from_dataclass(tar_dclass, default):
 class GTransition:
     adjs: np.ndarray  # [B, N, N]
     edges: np.ndarray  # [B, N, e]
+    next_edges: np.ndarray # [B, N, e]
     states: np.ndarray  # [B, N, s]
     actions: np.ndarray  # [B, N, a]
     next_states: np.ndarray  # [B, N, s]
@@ -118,6 +119,7 @@ class GTransition:
         N_max = max(Ns)
         adjs = [np.pad(t.adjs, [(0, 0), (0, N_max - N), (0, N_max - N)]) for t, N in zip(data, Ns)]
         edges = [np.pad(t.edges, [(0, 0), (0, N_max - N), (0, 0)]) for t, N in zip(data, Ns)]
+        next_edges = [np.pad(t.next_edges, [(0, 0), (0, N_max - N), (0, 0)]) for t, N in zip(data, Ns)]
         states = [np.pad(t.states, [(0, 0), (0, N_max - N), (0, 0)]) for t, N in zip(data, Ns)]
         next_states = [np.pad(t.next_states, [(0, 0), (0, N_max - N), (0, 0)]) for t, N in zip(data, Ns)]
         actions = [np.pad(t.actions, [(0, 0), (0, N_max - N), (0, 0)]) for t, N in zip(data, Ns)]
@@ -126,6 +128,7 @@ class GTransition:
         return cls(
             adjs=np.concatenate(adjs, axis=0),
             edges=np.concatenate(edges, axis=0),
+            next_edges=np.concatenate(next_edges, axis=0),
             states=np.concatenate(states, axis=0),
             next_states=np.concatenate(next_states, axis=0),
             actions=np.concatenate(actions, axis=0),

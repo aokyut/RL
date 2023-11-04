@@ -58,14 +58,14 @@ class QNetwork(nn.Module):
         B, N, _ = adj.shape
         state = torch.reshape(state, (B, N, self.state_size))
         action = torch.reshape(action, (B, N, self.a_size))
-        v = F.silu(self.v_input(torch.cat([state, action], dim=2)))
+        v = F.relu(self.v_input(torch.cat([state, action], dim=2)))
 
         edge = torch.reshape(edge, (B, N, self.edge_size))
-        e = F.silu(self.e_input(edge))
+        e = F.relu(self.e_input(edge))
 
         e_agg_u = torch.sum(e * F.softmax(self.e_att(e), dim=1), dim=1, keepdim=True)  # [B, 1, eh_size]
         v_agg_u = torch.sum(v * F.softmax(self.v_att(v), dim=1), dim=1, keepdim=True)  # [B, 1, vh_size]
-        u = F.silu(self.u_input(torch.cat([e_agg_u, v_agg_u], dim=2)))
+        u = F.relu(self.u_input(torch.cat([e_agg_u, v_agg_u], dim=2)))
 
         adj_T = F.normalize(torch.transpose(adj, 1, 2), p=1, dim=2)
 
@@ -114,14 +114,14 @@ class GaussianPolicy(nn.Module):
         """
         B, N, _ = adj.shape
         state = torch.reshape(state, (B, N, self.state_size))
-        v = F.silu(self.v_input(state))
+        v = F.relu(self.v_input(state))
 
         edge = torch.reshape(edge, (B, N, self.edge_size))
-        e = F.silu(self.e_input(edge))
+        e = F.relu(self.e_input(edge))
 
         e_agg_u = torch.sum(e * F.softmax(self.e_att(e), dim=1), dim=1, keepdim=True)  # [B, 1, eh_size]
         v_agg_u = torch.sum(v * F.softmax(self.v_att(v), dim=1), dim=1, keepdim=True)  # [B, 1, vh_size]
-        u = F.silu(self.u_input(torch.cat([e_agg_u, v_agg_u], dim=2)))
+        u = F.relu(self.u_input(torch.cat([e_agg_u, v_agg_u], dim=2)))
 
         adj_T = F.normalize(torch.transpose(adj, 1, 2), p=1, dim=2)
 
@@ -145,8 +145,10 @@ class GaussianPolicy(nn.Module):
         log_prob = normal.log_prob(x)
         log_prob -= torch.log(self.action_scale * (1 - y.pow(2)) + EPS)
         # log_prob = log_prob.sum(1, keepdim=True)
+
+        mask = torch.sum(F.normalize(adj, p=1, dim=2), dim=2)
     
-        return action, log_prob
+        return action * mask, log_prob * mask
         
 
 
@@ -199,7 +201,7 @@ class GCNBlock(nn.Module):
             u_feature
         ], dim=2)  # [B, N, eh + vh + uh]
         u_out =  self.u(u_in)
-        return F.silu(e_out), F.silu(v_out), F.silu(u_out)
+        return F.relu(e_out), F.relu(v_out), F.relu(u_out)
 
 
 

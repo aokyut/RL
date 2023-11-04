@@ -7,7 +7,7 @@ from tqdm import tqdm
 import sys
 from collections import OrderedDict
 import os
-
+from time import sleep
 
 class GraphSACAgent:
     def __init__(self, config: GraphSacConfig, eval_func, explore_func):
@@ -82,6 +82,7 @@ class GraphSACAgent:
             dones: [B, 1, 1]
             adjs: [B, N, N]
         """
+        sleep(0.2)
         states = torch.FloatTensor(batch.states)
         actions = torch.FloatTensor(batch.actions)
         rewards = torch.FloatTensor(batch.rewards)
@@ -89,12 +90,13 @@ class GraphSACAgent:
         dones = torch.FloatTensor(batch.dones)
         adjs = torch.FloatTensor(batch.adjs)
         edges = torch.FloatTensor(batch.edges)
+        next_edges = torch.FloatTensor(batch.next_edges)
 
 
         with torch.no_grad():
-            next_actions, next_logprobs = self.policy.sample_action(adjs, edges, states)
+            next_actions, next_logprobs = self.policy.sample_action(adjs, next_edges, next_states)
             alpha = torch.exp(self.log_alpha)
-            next_q1, next_q2 = self.tar_qnet(adjs, edges, states, actions)
+            next_q1, next_q2 = self.tar_qnet(adjs, next_edges, next_states, next_actions)
             next_q = torch.min(next_q1, next_q2)
             next_q_tar = rewards + self.c.gamma * (1 - dones) * (next_q - alpha * next_logprobs)
         
@@ -149,7 +151,7 @@ class GraphSACAgent:
 
         if self.c.step % self.c.save_n == 0:
             self.save()
-        
+            
         if self.c.step % self.c.target_update_n == 0:
             soft_update(self.tar_qnet, self.qnet, self.c.target_update_tau)
 
